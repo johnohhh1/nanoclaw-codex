@@ -20,13 +20,19 @@ export class WebChannel implements Channel {
 
   private server: WebUIServer | null = null;
   private readonly port: number;
+  private readonly host: string;
   private readonly authToken: string;
   private readonly opts: ChannelOpts;
   private readonly sessionByChatJid = new Map<string, string>();
 
   constructor(opts: ChannelOpts) {
-    const envVars = readEnvFile(['WEB_UI_PORT', 'WEB_UI_AUTH_TOKEN']);
+    const envVars = readEnvFile([
+      'WEB_UI_PORT',
+      'WEB_UI_HOST',
+      'WEB_UI_AUTH_TOKEN',
+    ]);
     this.port = parsePort(process.env.WEB_UI_PORT || envVars.WEB_UI_PORT);
+    this.host = process.env.WEB_UI_HOST || envVars.WEB_UI_HOST || '0.0.0.0';
     this.authToken =
       process.env.WEB_UI_AUTH_TOKEN || envVars.WEB_UI_AUTH_TOKEN || '';
     this.opts = opts;
@@ -36,6 +42,7 @@ export class WebChannel implements Channel {
     const staticPath = path.resolve(process.cwd(), 'assets', 'web-ui');
     this.server = new WebUIServer({
       port: this.port,
+      host: this.host,
       authToken: this.authToken,
       assistantName: ASSISTANT_NAME,
       staticPath,
@@ -48,6 +55,7 @@ export class WebChannel implements Channel {
           trigger: DEFAULT_TRIGGER,
           added_at: new Date().toISOString(),
           requiresTrigger: false,
+          isMain: true,
         });
         this.opts.onChatMetadata(chatJid, timestamp, 'Web UI', 'web', false);
         this.opts.onMessage(chatJid, {

@@ -27,12 +27,14 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Chromium path for agent-browser
+# Set Chromium path for browser automation tools
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV NODE_PATH=/app/node_modules
 
-# Install agent-browser and Codex CLI globally
-RUN npm install -g agent-browser @openai/codex
+# Install browser automation and Codex tooling globally
+RUN npm install -g agent-browser playwright @playwright/test @openai/codex
 
 # Create app directory
 WORKDIR /app

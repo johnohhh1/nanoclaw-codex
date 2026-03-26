@@ -62,6 +62,7 @@ async function registerBotCommands(bot: Bot): Promise<void> {
     { command: 'help', description: 'Show available Pepper commands' },
     { command: 'ping', description: 'Check that Pepper is online' },
     { command: 'status', description: 'Show NanoClaw service status' },
+    { command: 'capabilities', description: 'Show Pepper capabilities' },
     { command: 'restart', description: 'Restart the NanoClaw service' },
     { command: 'chatid', description: 'Show this chat registration ID' },
   ]);
@@ -108,6 +109,7 @@ export class TelegramChannel implements Channel {
         `/${'ping'} - confirm ${ASSISTANT_NAME} is online`,
         '/chatid - show this chat registration ID',
         '/status - show NanoClaw process status',
+        '/capabilities - show Pepper capabilities',
         '/restart - restart NanoClaw',
       ];
       await ctx.reply(lines.join('\n'));
@@ -145,6 +147,21 @@ export class TelegramChannel implements Channel {
       await ctx.reply(statusLines.join('\n'), { parse_mode: 'Markdown' });
     });
 
+    this.bot.command('capabilities', async (ctx) => {
+      if (!(await requireMainChat(this.opts, ctx))) return;
+
+      const lines = [
+        '*Pepper Capabilities*',
+        '• Browser automation with `agent-browser`',
+        '• Docker access in the main sandbox',
+        '• Immediate `send_message` progress updates',
+        '• Subagents and scheduled task controls',
+        '• Repo editing and local Web UI access',
+        '• Run `/skills` for installed repo skills',
+      ];
+      await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
+    });
+
     this.bot.command('restart', async (ctx) => {
       if (!(await requireMainChat(this.opts, ctx))) return;
 
@@ -157,6 +174,7 @@ export class TelegramChannel implements Channel {
     });
 
     const TELEGRAM_BOT_COMMANDS = new Set([
+      'capabilities',
       'chatid',
       'help',
       'ping',

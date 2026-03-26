@@ -56,6 +56,7 @@ Confirm which tool families are available to you:
 
 ```bash
 which agent-browser 2>/dev/null && echo "agent-browser: available" || echo "agent-browser: not installed"
+command -v playwright >/dev/null 2>&1 && echo "playwright: available" || echo "playwright: not installed"
 node --version 2>/dev/null
 codex --version 2>/dev/null
 command -v docker >/dev/null 2>&1 && echo "docker-cli: available" || echo "docker-cli: not installed"
@@ -99,6 +100,7 @@ Present as a clean, readable message:
 
 *Container:*
 • agent-browser: ✓ / not installed
+• Playwright: ✓ / not installed
 • Node: vXX.X.X
 • Codex: vX.X.X
 • Docker CLI: available / not installed

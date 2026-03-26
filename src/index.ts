@@ -14,6 +14,7 @@ import {
   TIMEZONE,
 } from './config.js';
 import { loadConfiguredChannels } from './channels/index.js';
+import { readEnvFile } from './env.js';
 import {
   getChannelFactory,
   getRegisteredChannelNames,
@@ -62,6 +63,7 @@ import {
 import {
   addSkillToGroup,
   createSkill,
+  discoverSkills,
   formatSkillsReport,
   getSkillByName,
   removeSkillFromGroup,
@@ -157,6 +159,83 @@ function saveState(): void {
   setRouterState('last_agent_timestamp', JSON.stringify(lastAgentTimestamp));
 }
 
+function formatMainOnlyMessage(command: string): string {
+  return `${command} is available in the main admin chat only.`;
+}
+
+function formatCapabilitiesReport(group: RegisteredGroup): string {
+  const envVars = readEnvFile(['WEB_UI_PORT']);
+  const availableSkills = discoverSkills();
+  const installedSkills = getGroupSkills(group.folder);
+
+  const lines: string[] = [];
+  lines.push('*NanoClaw Capabilities*');
+  lines.push(`Assistant: ${ASSISTANT_NAME}`);
+  lines.push(`Group: ${group.folder}`);
+  lines.push(`Main channel: ${group.isMain ? 'yes' : 'no'}`);
+  lines.push('');
+  lines.push('*Messaging*');
+  lines.push('• Telegram channel');
+  lines.push('• WhatsApp channel');
+  const webUiPort = process.env.WEB_UI_PORT || envVars.WEB_UI_PORT;
+  if (webUiPort) {
+    lines.push(`• Web UI channel on http://localhost:${webUiPort}`);
+  }
+  lines.push('');
+  lines.push('*Operator Tools*');
+  lines.push('• agent-browser for live browser inspection and UI automation');
+  lines.push('• Docker CLI in the main sandbox');
+  lines.push('• Immediate progress replies via send_message');
+  lines.push('• Subagents via team_create / team_send_message / task_output');
+  lines.push('• Scheduled tasks via schedule_task / list_tasks / update_task');
+  lines.push('');
+  lines.push('*Installed Repo Skills*');
+  if (installedSkills.length === 0) {
+    lines.push('• none installed for this group');
+  } else {
+    for (const skillName of installedSkills) {
+      const skill = availableSkills.find((entry) => entry.name === skillName);
+      lines.push(
+        `• ${skillName}${skill ? ` — ${skill.description}` : ''}`,
+      );
+    }
+  }
+  lines.push('');
+  lines.push(`Available repo skills: ${availableSkills.length}`);
+  lines.push('Use `/skills` to inspect and install more.');
+
+  return lines.join('\n');
+}
+
+function formatStatusReport(group: RegisteredGroup): string {
+  const envVars = readEnvFile([
+    'WEB_UI_PORT',
+    'CONTAINER_MOUNT_DOCKER_SOCKET',
+  ]);
+  const installedSkills = getGroupSkills(group.folder);
+  const lines: string[] = [];
+  lines.push('*NanoClaw Status*');
+  lines.push(`Assistant: ${ASSISTANT_NAME}`);
+  lines.push(`PID: \`${process.pid}\``);
+  lines.push(`Uptime: \`${formatProcessUptime()}\``);
+  lines.push(`Group: \`${group.folder}\``);
+  lines.push(`Main channel: ${group.isMain ? 'yes' : 'no'}`);
+  lines.push(`Installed skills: ${installedSkills.length}`);
+  const webUiPort = process.env.WEB_UI_PORT || envVars.WEB_UI_PORT;
+  lines.push(
+    `Web UI: ${webUiPort ? `localhost:${webUiPort}` : 'disabled'}`,
+  );
+  const dockerSocketMount =
+    process.env.CONTAINER_MOUNT_DOCKER_SOCKET ||
+    envVars.CONTAINER_MOUNT_DOCKER_SOCKET;
+  lines.push(
+    `Docker socket mount: ${dockerSocketMount === 'true' ? 'enabled' : 'disabled'}`,
+  );
+  lines.push(`Connected channels: ${channels.map((ch) => ch.name).join(', ')}`);
+
+  return lines.join('\n');
+}
+
 function registerGroup(jid: string, group: RegisteredGroup): void {
   let groupDir: string;
   try {
@@ -202,6 +281,14 @@ function registerGroup(jid: string, group: RegisteredGroup): void {
     { jid, name: group.name, folder: group.folder },
     'Group registered',
   );
+}
+
+function formatProcessUptime(): string {
+  const totalSeconds = Math.floor(process.uptime());
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${hours}h ${minutes}m ${seconds}s`;
 }
 
 /**
@@ -705,6 +792,36 @@ async function main(): Promise<void> {
     );
   }
 
+  async function handleCapabilitiesCommand(chatJid: string): Promise<void> {
+    const group = registeredGroups[chatJid];
+    if (!group?.isMain) {
+      const channel = findChannel(channels, chatJid);
+      if (channel) {
+        await channel.sendMessage(chatJid, formatMainOnlyMessage('/capabilities'));
+      }
+      return;
+    }
+
+    const channel = findChannel(channels, chatJid);
+    if (!channel) return;
+    await channel.sendMessage(chatJid, formatCapabilitiesReport(group));
+  }
+
+  async function handleStatusCommand(chatJid: string): Promise<void> {
+    const group = registeredGroups[chatJid];
+    if (!group?.isMain) {
+      const channel = findChannel(channels, chatJid);
+      if (channel) {
+        await channel.sendMessage(chatJid, formatMainOnlyMessage('/status'));
+      }
+      return;
+    }
+
+    const channel = findChannel(channels, chatJid);
+    if (!channel) return;
+    await channel.sendMessage(chatJid, formatStatusReport(group));
+  }
+
   // Channel callbacks (shared by all channels)
   const channelOpts = {
     onMessage: (chatJid: string, msg: NewMessage) => {
@@ -719,6 +836,20 @@ async function main(): Promise<void> {
       if (trimmed === '/skills' || trimmed.startsWith('/skills ')) {
         handleSkillsCommand(chatJid, trimmed).catch((err) =>
           logger.error({ err, chatJid }, 'Skills command error'),
+        );
+        return;
+      }
+
+      if (trimmed === '/capabilities') {
+        handleCapabilitiesCommand(chatJid).catch((err) =>
+          logger.error({ err, chatJid }, 'Capabilities command error'),
+        );
+        return;
+      }
+
+      if (trimmed === '/status') {
+        handleStatusCommand(chatJid).catch((err) =>
+          logger.error({ err, chatJid }, 'Status command error'),
         );
         return;
       }
@@ -751,7 +882,24 @@ async function main(): Promise<void> {
     registeredGroups: () => registeredGroups,
     ensureRegisteredChat: (chatJid: string, group: RegisteredGroup) => {
       const existing = registeredGroups[chatJid];
-      if (existing) return existing;
+      if (
+        existing &&
+        existing.folder === group.folder &&
+        existing.name === group.name &&
+        existing.trigger === group.trigger &&
+        existing.requiresTrigger === group.requiresTrigger &&
+        existing.isMain === group.isMain
+      ) {
+        return existing;
+      }
+      if (existing) {
+        registerGroup(chatJid, {
+          ...existing,
+          ...group,
+          added_at: existing.added_at || group.added_at,
+        });
+        return registeredGroups[chatJid];
+      }
       registerGroup(chatJid, group);
       return registeredGroups[chatJid];
     },

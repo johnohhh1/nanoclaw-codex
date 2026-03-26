@@ -59,6 +59,7 @@ Check for executable tools in the container:
 
 ```bash
 which agent-browser 2>/dev/null && echo "agent-browser: available" || echo "agent-browser: not found"
+command -v playwright >/dev/null 2>&1 && echo "playwright: available" || echo "playwright: not found"
 command -v docker >/dev/null 2>&1 && echo "docker: available" || echo "docker: not found"
 test -S /var/run/docker.sock && echo "docker-socket: mounted" || echo "docker-socket: not mounted"
 ```
@@ -81,6 +82,7 @@ Present the report as a clean, readable message. Example:
 
 *Installed Skills:*
 • /agent-browser — Browse the web, fill forms, extract data
+• /playwright — Deterministic browser automation and UI testing
 • /capabilities — This report
 (list all found skills)
 
@@ -92,6 +94,7 @@ Present the report as a clean, readable message. Example:
 
 *Container Tools:*
 • agent-browser: ✓
+• playwright: ✓ / not found
 • docker: ✓ / not found
 • docker-socket: mounted / not mounted
 

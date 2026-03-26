@@ -70,17 +70,24 @@ Configure it in `.env`:
 
 ```ini
 WEB_UI_PORT=3000
+WEB_UI_HOST=0.0.0.0
 WEB_UI_AUTH_TOKEN=
 ```
 
 Behavior:
 - the Web UI channel is only loaded when `WEB_UI_PORT` is set
 - it serves a local chat UI on `http://localhost:<WEB_UI_PORT>`
+- it binds to `WEB_UI_HOST` and defaults to `0.0.0.0` so agent containers can reach it via `host.docker.internal`
 - `WEB_UI_AUTH_TOKEN` is optional; when set, the browser must provide it to connect
 - the UI uses `ASSISTANT_NAME` for the displayed assistant identity
 - microphone input uses the browser Web Speech API client-side when available
+- Web UI sessions run as an admin/operator surface, so Pepper can inspect `localhost`, use browser automation, and operate on the real repo from that channel
 
 The web channel uses the same inbound message pipeline as Telegram: messages are stored, routed through the normal group queue, and replies are sent back over the active WebSocket session.
+
+Browser tooling inside the agent container now includes:
+- `agent-browser` for quick interactive browsing
+- `playwright` for deterministic browser automation, DOM inspection, and repeatable UI testing
 
 ## Main Container Behavior
 

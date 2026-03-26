@@ -244,6 +244,86 @@ function readInstructionFile(dir: string): string | null {
   }
 }
 
+function parseSkillDescription(content: string): string {
+  const match = content.match(/description:\s*["']?(.+?)["']?(?:\n|$)/);
+  return match?.[1]?.trim() || 'No description.';
+}
+
+function getAvailableRepoSkills(): Array<{ name: string; description: string }> {
+  const skillsDir = '/workspace/skills-catalog';
+  if (!fs.existsSync(skillsDir)) return [];
+
+  const skills: Array<{ name: string; description: string }> = [];
+  for (const entry of fs.readdirSync(skillsDir).sort()) {
+    const skillPath = path.join(skillsDir, entry, 'SKILL.md');
+    if (!fs.existsSync(skillPath)) continue;
+    try {
+      const content = fs.readFileSync(skillPath, 'utf-8');
+      skills.push({
+        name: entry,
+        description: parseSkillDescription(content),
+      });
+    } catch (err) {
+      log(`Failed to read skill catalog entry ${entry}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  return skills;
+}
+
+function buildSkillIndex(containerInput: ContainerInput): string {
+  const installed = containerInput.activeSkills || [];
+  const available = getAvailableRepoSkills();
+  const availableLines = available.length
+    ? available.map((skill) => `- ${skill.name}: ${skill.description}`)
+    : ['- none'];
+  const installedLines = installed.length
+    ? installed.map((name) => `- ${name}`)
+    : ['- none'];
+
+  return [
+    'Skill index:',
+    `Installed repo skills for this group (${installed.length}):`,
+    ...installedLines,
+    '',
+    `Available repo skills in /workspace/skills-catalog (${available.length}):`,
+    ...availableLines,
+    '',
+    'Built-in container/operator capabilities:',
+    '- agent-browser: installed for live browser inspection and UI automation',
+    '- playwright: installed for deterministic browser automation and UI testing',
+    '- docker: available when the Docker socket is mounted in the main sandbox',
+    '- mcp__nanoclaw__send_message: immediate progress replies',
+    '- mcp__nanoclaw__team_create / task_output / task_stop: subagents',
+    '- mcp__nanoclaw__schedule_task / list_tasks / update_task: scheduling',
+  ].join('\n');
+}
+
+function buildChannelHints(containerInput: ContainerInput): string {
+  const hints: string[] = [];
+
+  if (containerInput.chatJid.startsWith('web:')) {
+    hints.push(
+      'Web UI session guidance:',
+      '- You are talking through the local NanoClaw Web UI.',
+      '- Inside the sandbox, the host Web UI is reachable at http://host.docker.internal:3000. Use that instead of localhost.',
+      '- If the user asks about the live UI, use agent-browser against http://host.docker.internal:3000 instead of guessing.',
+      '- If /workspace/project exists, you can edit the real app source there and verify in the browser.',
+      '- Voice input in the Web UI is browser-side transcription; you receive normal text.',
+    );
+  }
+
+  if (containerInput.isMain) {
+    hints.push(
+      'Main/admin sandbox guidance:',
+      '- /workspace/project is mounted read-write.',
+      '- Docker may be available; verify with command -v docker and test -S /var/run/docker.sock before claiming status.',
+      '- Prefer live checks over stale assumptions when reporting capabilities.',
+    );
+  }
+
+  return hints.join('\n');
+}
+
 function getExtraDirs(): string[] {
   const extraDirs: string[] = [];
   const extraBase = '/workspace/extra';
@@ -280,6 +360,13 @@ function buildPrompt(prompt: string, containerInput: ContainerInput, extraDirs: 
   if (groupInstructions) {
     sections.push('Workspace instructions:\n' + groupInstructions);
   }
+
+  const channelHints = buildChannelHints(containerInput);
+  if (channelHints) {
+    sections.push(channelHints);
+  }
+
+  sections.push(buildSkillIndex(containerInput));
 
   for (const extraDir of extraDirs) {
     const extraInstructions = readInstructionFile(extraDir);

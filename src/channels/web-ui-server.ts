@@ -182,7 +182,8 @@ export default class WebUIServer {
         const content =
           typeof payload.content === 'string' ? payload.content.trim() : '';
         const chatJid =
-          typeof payload.chatJid === 'string' && payload.chatJid.startsWith('web:')
+          typeof payload.chatJid === 'string' &&
+          payload.chatJid.startsWith('web:')
             ? payload.chatJid
             : `web:${sessionId}`;
         const messageId =

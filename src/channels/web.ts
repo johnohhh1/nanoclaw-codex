@@ -87,7 +87,10 @@ export class WebChannel implements Channel {
 
     if (!sent) {
       this.sessionByChatJid.delete(jid);
-      logger.warn({ jid, sessionId }, 'Failed to send Web UI message to session');
+      logger.warn(
+        { jid, sessionId },
+        'Failed to send Web UI message to session',
+      );
       return;
     }
 

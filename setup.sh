@@ -67,6 +67,12 @@ normalize_folder() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//; s/-+/-/g'
 }
 
+strip_channel_prefix() {
+  local channel="$1"
+  local value="$2"
+  printf '%s' "$value" | sed -E "s/^${channel}[-_]+//"
+}
+
 ensure_deps() {
   if [[ ! -d node_modules ]]; then
     step "Installing dependencies"
@@ -76,6 +82,26 @@ ensure_deps() {
 
 run_step() {
   npx tsx setup/index.ts --step "$@"
+}
+
+start_configured_service() {
+  if command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload >/dev/null 2>&1; then
+    systemctl --user start nanoclaw
+    systemctl --user is-active --quiet nanoclaw || fail "NanoClaw service failed to start under systemd --user."
+    return
+  fi
+
+  if command -v launchctl >/dev/null 2>&1; then
+    launchctl kickstart -k "gui/$(id -u)/com.nanoclaw" >/dev/null 2>&1 || true
+    return
+  fi
+
+  if [[ -x "$ROOT_DIR/start-nanoclaw.sh" ]]; then
+    "$ROOT_DIR/start-nanoclaw.sh"
+    return
+  fi
+
+  fail "Could not determine how to start the NanoClaw service."
 }
 
 ensure_deps
@@ -131,7 +157,7 @@ group_name="$(ask "Display name for this chat/group")"
 default_folder="${channel}_$(normalize_folder "$group_name")"
 folder="$(ask "Folder name" "$default_folder")"
 folder="$(normalize_folder "$folder")"
-folder="${channel}_$(printf '%s' "$folder" | sed -E "s/^${channel}_//")"
+folder="${channel}_$(strip_channel_prefix "$channel" "$folder")"
 
 if confirm "Make this the main group?" "y"; then
   main_flag="--is-main"
@@ -171,6 +197,8 @@ run_step "${register_args[@]}"
 if confirm "Install NanoClaw as a background service now?" "n"; then
   step "Setting up service"
   run_step service
+  step "Starting service"
+  start_configured_service
 fi
 
 step "Verifying installation"

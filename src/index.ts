@@ -195,9 +195,7 @@ function formatCapabilitiesReport(group: RegisteredGroup): string {
   } else {
     for (const skillName of installedSkills) {
       const skill = availableSkills.find((entry) => entry.name === skillName);
-      lines.push(
-        `• ${skillName}${skill ? ` — ${skill.description}` : ''}`,
-      );
+      lines.push(`• ${skillName}${skill ? ` — ${skill.description}` : ''}`);
     }
   }
   lines.push('');
@@ -208,10 +206,7 @@ function formatCapabilitiesReport(group: RegisteredGroup): string {
 }
 
 function formatStatusReport(group: RegisteredGroup): string {
-  const envVars = readEnvFile([
-    'WEB_UI_PORT',
-    'CONTAINER_MOUNT_DOCKER_SOCKET',
-  ]);
+  const envVars = readEnvFile(['WEB_UI_PORT', 'CONTAINER_MOUNT_DOCKER_SOCKET']);
   const installedSkills = getGroupSkills(group.folder);
   const lines: string[] = [];
   lines.push('*NanoClaw Status*');
@@ -222,9 +217,7 @@ function formatStatusReport(group: RegisteredGroup): string {
   lines.push(`Main channel: ${group.isMain ? 'yes' : 'no'}`);
   lines.push(`Installed skills: ${installedSkills.length}`);
   const webUiPort = process.env.WEB_UI_PORT || envVars.WEB_UI_PORT;
-  lines.push(
-    `Web UI: ${webUiPort ? `localhost:${webUiPort}` : 'disabled'}`,
-  );
+  lines.push(`Web UI: ${webUiPort ? `localhost:${webUiPort}` : 'disabled'}`);
   const dockerSocketMount =
     process.env.CONTAINER_MOUNT_DOCKER_SOCKET ||
     envVars.CONTAINER_MOUNT_DOCKER_SOCKET;
@@ -797,7 +790,10 @@ async function main(): Promise<void> {
     if (!group?.isMain) {
       const channel = findChannel(channels, chatJid);
       if (channel) {
-        await channel.sendMessage(chatJid, formatMainOnlyMessage('/capabilities'));
+        await channel.sendMessage(
+          chatJid,
+          formatMainOnlyMessage('/capabilities'),
+        );
       }
       return;
     }

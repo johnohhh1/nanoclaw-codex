@@ -4,6 +4,7 @@
  */
 import { ChildProcess, exec, spawn } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 import {
@@ -58,6 +59,48 @@ interface VolumeMount {
   hostPath: string;
   containerPath: string;
   readonly: boolean;
+}
+
+function migrateLegacyCodexLayout(groupSessionsDir: string): void {
+  const legacyDir = path.join(groupSessionsDir, '.codex');
+  if (!fs.existsSync(legacyDir)) {
+    return;
+  }
+
+  for (const entry of fs.readdirSync(legacyDir)) {
+    const sourcePath = path.join(legacyDir, entry);
+    const targetPath = path.join(groupSessionsDir, entry);
+    if (fs.existsSync(targetPath)) {
+      continue;
+    }
+    fs.cpSync(sourcePath, targetPath, { recursive: true });
+  }
+}
+
+function seedGroupCodexAuth(groupSessionsDir: string): void {
+  const hostCodexDir = path.join(
+    os.homedir(),
+    '.codex',
+  );
+  const hostAuthFile = path.join(hostCodexDir, 'auth.json');
+  const groupAuthFile = path.join(groupSessionsDir, 'auth.json');
+
+  if (!fs.existsSync(hostAuthFile)) {
+    return;
+  }
+
+  fs.mkdirSync(groupSessionsDir, { recursive: true });
+
+  const shouldCopy =
+    !fs.existsSync(groupAuthFile) ||
+    fs.statSync(hostAuthFile).mtimeMs > fs.statSync(groupAuthFile).mtimeMs;
+
+  if (!shouldCopy) {
+    return;
+  }
+
+  fs.copyFileSync(hostAuthFile, groupAuthFile);
+  logger.info({ groupState: groupSessionsDir }, 'Seeded group Codex auth from host session');
 }
 
 function buildVolumeMounts(
@@ -135,9 +178,11 @@ function buildVolumeMounts(
     AGENT_STATE_DIRNAME,
   );
   fs.mkdirSync(groupSessionsDir, { recursive: true });
+  migrateLegacyCodexLayout(groupSessionsDir);
+  seedGroupCodexAuth(groupSessionsDir);
   mounts.push({
     hostPath: groupSessionsDir,
-    containerPath: '/workspace/group/.codex-home',
+    containerPath: '/home/node/.codex',
     readonly: false,
   });
 

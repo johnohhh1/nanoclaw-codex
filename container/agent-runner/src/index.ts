@@ -59,9 +59,10 @@ const IPC_POLL_MS = 500;
 const SCRIPT_TIMEOUT_MS = 30_000;
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
-const CODEX_STATE_HOME = '/workspace/group/.codex-home';
+const CODEX_HOME_ROOT = '/home/node';
 const CODEX_MCP_NAME = 'nanoclaw';
 const RUN_ARTIFACTS_DIR = '/tmp/nanoclaw-codex';
+let supportsGlobalSearchFlag: boolean | null = null;
 
 async function readStdin(): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -329,7 +330,7 @@ async function configureCodexMcp(
   codexEnv: NodeJS.ProcessEnv,
   containerInput: ContainerInput,
 ): Promise<void> {
-  fs.mkdirSync(CODEX_STATE_HOME, { recursive: true });
+  fs.mkdirSync(path.join(CODEX_HOME_ROOT, '.codex'), { recursive: true });
 
   try {
     await execFileAsync(
@@ -369,6 +370,29 @@ async function configureCodexMcp(
   }
 }
 
+async function codexSupportsGlobalSearch(): Promise<boolean> {
+  if (supportsGlobalSearchFlag != null) {
+    return supportsGlobalSearchFlag;
+  }
+
+  try {
+    const { stdout } = await execFileAsync('codex', ['--help'], {
+      cwd: '/workspace/group',
+      env: process.env,
+    });
+    supportsGlobalSearchFlag = stdout.includes('--search');
+  } catch (err) {
+    log(
+      `Failed to probe Codex --search support: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    supportsGlobalSearchFlag = false;
+  }
+
+  return supportsGlobalSearchFlag;
+}
+
 function createRunArtifactsDir(): void {
   fs.mkdirSync(RUN_ARTIFACTS_DIR, { recursive: true });
 }
@@ -388,7 +412,7 @@ async function runCodexTurn(
 
   const codexEnv: NodeJS.ProcessEnv = {
     ...process.env,
-    HOME: CODEX_STATE_HOME,
+    HOME: CODEX_HOME_ROOT,
   };
 
   await configureCodexMcp(mcpServerPath, codexEnv, containerInput);
@@ -399,22 +423,42 @@ async function runCodexTurn(
     `last-message-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`,
   );
 
-  const args: string[] = sessionId
-    ? ['exec', 'resume', sessionId, '-']
-    : ['exec', '-'];
+  const args: string[] = [];
 
-  args.push(
-    '--json',
-    '--color', 'never',
-    '--skip-git-repo-check',
-    '--dangerously-bypass-approvals-and-sandbox',
-    '--search',
-    '-C', '/workspace/group',
-    '-o', outputFile,
-  );
+  if (await codexSupportsGlobalSearch()) {
+    args.push('--search');
+  }
 
-  for (const extraDir of extraDirs) {
-    args.push('--add-dir', extraDir);
+  if (sessionId) {
+    args.push(
+      'exec',
+      'resume',
+      sessionId,
+      '-',
+      '--json',
+      '--skip-git-repo-check',
+      '--dangerously-bypass-approvals-and-sandbox',
+      '-o',
+      outputFile,
+    );
+  } else {
+    args.push(
+      'exec',
+      '-',
+      '--json',
+      '--color',
+      'never',
+      '--skip-git-repo-check',
+      '--dangerously-bypass-approvals-and-sandbox',
+      '-C',
+      '/workspace/group',
+      '-o',
+      outputFile,
+    );
+
+    for (const extraDir of extraDirs) {
+      args.push('--add-dir', extraDir);
+    }
   }
 
   return new Promise((resolve, reject) => {
@@ -613,7 +657,7 @@ async function main(): Promise<void> {
 
   let sessionId = containerInput.sessionId;
   fs.mkdirSync(IPC_INPUT_DIR, { recursive: true });
-  fs.mkdirSync(CODEX_STATE_HOME, { recursive: true });
+  fs.mkdirSync(path.join(CODEX_HOME_ROOT, '.codex'), { recursive: true });
 
   try {
     fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL);

@@ -13,7 +13,7 @@ import {
   POLL_INTERVAL,
   TIMEZONE,
 } from './config.js';
-import './channels/index.js';
+import { loadConfiguredChannels } from './channels/index.js';
 import {
   getChannelFactory,
   getRegisteredChannelNames,
@@ -83,6 +83,38 @@ const channels: Channel[] = [];
 const queue = new GroupQueue();
 
 const onecli = new OneCLI({ url: ONECLI_URL });
+
+async function connectChannelSafely(
+  channel: Channel,
+  timeoutMs = 20_000,
+): Promise<boolean> {
+  try {
+    await Promise.race([
+      channel.connect(),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () =>
+            reject(
+              new Error(`connect timeout after ${timeoutMs}ms`),
+            ),
+          timeoutMs,
+        );
+      }),
+    ]);
+    return true;
+  } catch (err) {
+    logger.warn(
+      { channel: channel.name, err: err instanceof Error ? err.message : String(err) },
+      'Channel connect failed; skipping channel startup',
+    );
+    try {
+      await channel.disconnect();
+    } catch {
+      // ignore cleanup failure
+    }
+    return false;
+  }
+}
 
 function ensureOneCLIAgent(jid: string, group: RegisteredGroup): void {
   if (group.isMain) return;
@@ -540,6 +572,7 @@ async function main(): Promise<void> {
   }
 
   restoreRemoteControl();
+  await loadConfiguredChannels();
 
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
@@ -731,8 +764,9 @@ async function main(): Promise<void> {
       );
       continue;
     }
-    channels.push(channel);
-    await channel.connect();
+    if (await connectChannelSafely(channel)) {
+      channels.push(channel);
+    }
   }
   if (channels.length === 0) {
     logger.fatal('No channels connected');

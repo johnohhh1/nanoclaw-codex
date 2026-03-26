@@ -1,14 +1,36 @@
-// Channel self-registration barrel file.
-// Each import triggers the channel module's registerChannel() call.
+import fs from 'fs';
+import path from 'path';
 
-// discord
+import { STORE_DIR } from '../config.js';
+import { readEnvFile } from '../env.js';
+import { logger } from '../logger.js';
 
-// gmail
+let loaded = false;
 
-// slack
+export async function loadConfiguredChannels(): Promise<void> {
+  if (loaded) return;
+  loaded = true;
 
-// telegram
-import './telegram.js';
+  const envVars = readEnvFile(['TELEGRAM_BOT_TOKEN']);
+  const telegramToken =
+    process.env.TELEGRAM_BOT_TOKEN || envVars.TELEGRAM_BOT_TOKEN || '';
 
-// whatsapp
-import './whatsapp.js';
+  if (telegramToken) {
+    await import('./telegram.js');
+    logger.info('Loaded Telegram channel');
+  } else {
+    logger.info('Skipping Telegram channel: TELEGRAM_BOT_TOKEN not configured');
+  }
+
+  const whatsappAuthDir = path.join(STORE_DIR, 'auth');
+  const hasWhatsAppAuth =
+    fs.existsSync(whatsappAuthDir) &&
+    fs.readdirSync(whatsappAuthDir).length > 0;
+
+  if (hasWhatsAppAuth) {
+    await import('./whatsapp.js');
+    logger.info('Loaded WhatsApp channel');
+  } else {
+    logger.info('Skipping WhatsApp channel: no auth state found');
+  }
+}

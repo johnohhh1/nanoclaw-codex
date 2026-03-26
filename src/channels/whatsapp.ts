@@ -51,11 +51,14 @@ export class WhatsAppChannel implements Channel {
 
   async connect(): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      this.connectInternal(resolve).catch(reject);
+      this.connectInternal(resolve, reject).catch(reject);
     });
   }
 
-  private async connectInternal(onFirstOpen?: () => void): Promise<void> {
+  private async connectInternal(
+    onFirstOpen?: () => void,
+    onInitialFailure?: (err: Error) => void,
+  ): Promise<void> {
     const authDir = path.join(STORE_DIR, 'auth');
     fs.mkdirSync(authDir, { recursive: true });
 
@@ -78,13 +81,22 @@ export class WhatsAppChannel implements Channel {
         const msg =
           'WhatsApp authentication required. Run npm run auth to authenticate.';
         logger.error(msg);
-        exec(
-          `osascript -e 'display notification "${msg}" with title "NanoClaw" sound name "Basso"'`,
-        );
-        setTimeout(() => process.exit(1), 1000);
+        try {
+          exec(
+            `osascript -e 'display notification "${msg}" with title "NanoClaw" sound name "Basso"'`,
+          );
+        } catch {
+          // ignore desktop notification failures
+        }
+        if (!this.connected && onInitialFailure) {
+          const fail = onInitialFailure;
+          onInitialFailure = undefined;
+          fail(new Error(msg));
+        }
       }
 
       if (connection === 'close') {
+        const wasConnected = this.connected;
         this.connected = false;
         const reason = (
           lastDisconnect?.error as
@@ -101,6 +113,17 @@ export class WhatsAppChannel implements Channel {
           'Connection closed',
         );
 
+        if (!wasConnected) {
+          const message = `WhatsApp initial connection failed (${reason ?? 'unknown'})`;
+          logger.warn({ reason }, message);
+          if (onInitialFailure) {
+            const fail = onInitialFailure;
+            onInitialFailure = undefined;
+            fail(new Error(message));
+          }
+          return;
+        }
+
         if (shouldReconnect) {
           logger.info('Reconnecting...');
           this.connectInternal().catch((err) => {
@@ -112,8 +135,7 @@ export class WhatsAppChannel implements Channel {
             }, 5000);
           });
         } else {
-          logger.info('Logged out. Run npm run auth to re-authenticate.');
-          process.exit(0);
+          logger.warn('WhatsApp logged out. Channel will stay disconnected until re-authenticated.');
         }
       } else if (connection === 'open') {
         this.connected = true;
@@ -147,8 +169,10 @@ export class WhatsAppChannel implements Channel {
         }
 
         if (onFirstOpen) {
-          onFirstOpen();
+          const resolve = onFirstOpen;
           onFirstOpen = undefined;
+          onInitialFailure = undefined;
+          resolve();
         }
       }
     });
@@ -338,5 +362,12 @@ export class WhatsAppChannel implements Channel {
 }
 
 registerChannel('whatsapp', (opts) => {
+  const authDir = path.join(STORE_DIR, 'auth');
+  const hasAuth =
+    fs.existsSync(authDir) && fs.readdirSync(authDir).length > 0;
+  if (!hasAuth) {
+    logger.warn('WhatsApp: auth state not found, skipping channel');
+    return null;
+  }
   return new WhatsAppChannel(opts);
 });

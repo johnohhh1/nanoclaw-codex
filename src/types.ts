@@ -42,6 +42,13 @@ export interface RegisteredGroup {
   isMain?: boolean; // True for the main control group (no trigger, elevated privileges)
 }
 
+export interface SkillDefinition {
+  name: string;
+  dir: string;
+  skillPath: string;
+  description: string;
+}
+
 export interface NewMessage {
   id: string;
   chat_jid: string;

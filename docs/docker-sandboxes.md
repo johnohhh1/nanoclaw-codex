@@ -12,19 +12,19 @@ Host (macOS / Windows WSL)
     │   └── Container spawner → nested Docker daemon
     └── Docker-in-Docker
         └── nanoclaw-agent containers
-            └── Claude Agent SDK
+            └── Codex CLI
 ```
 
 Each agent runs in its own container, inside a micro VM that is fully isolated from your host. Two layers of isolation: per-agent containers + the VM boundary.
 
-The sandbox provides a MITM proxy at `host.docker.internal:3128` that handles network access and injects your Anthropic API key automatically.
+The sandbox provides a MITM proxy at `host.docker.internal:3128` that handles network access and injects your OpenAI API key automatically.
 
 > **Note:** This guide is based on a validated setup running on macOS (Apple Silicon) with WhatsApp. Other channels (Telegram, Slack, etc.) and environments (Windows WSL) may require additional proxy patches for their specific HTTP/WebSocket clients. The core patches (container runner, credential proxy, Dockerfile) apply universally — channel-specific proxy configuration varies.
 
 ## Prerequisites
 
 - **Docker Desktop v4.40+** with Sandbox support
-- **Anthropic API key** (the sandbox proxy manages injection)
+- **OpenAI API key** (the sandbox proxy manages injection)
 - For **Telegram**: a bot token from [@BotFather](https://t.me/BotFather) and your chat ID
 - For **WhatsApp**: a phone with WhatsApp installed
 
@@ -195,7 +195,7 @@ bash container/build.sh
 
 ```bash
 # Apply the Telegram skill
-npx tsx scripts/apply-skill.ts .claude/skills/add-telegram
+npx tsx scripts/apply-skill.ts .codex/skills/add-telegram
 
 # Rebuild after applying the skill
 npm run build
@@ -235,7 +235,7 @@ Make sure you configured proxy bypass in [Step 1](#step-1-create-the-sandbox) fi
 
 ```bash
 # Apply the WhatsApp skill
-npx tsx scripts/apply-skill.ts .claude/skills/add-whatsapp
+npx tsx scripts/apply-skill.ts .codex/skills/add-whatsapp
 
 # Rebuild
 npm run build
@@ -288,7 +288,7 @@ You don't need to set `ANTHROPIC_API_KEY` manually. The sandbox proxy intercepts
 All traffic from the sandbox routes through the host proxy at `host.docker.internal:3128`:
 
 ```
-Agent container → DinD bridge → Sandbox VM → host.docker.internal:3128 → Host proxy → api.anthropic.com
+Agent container → DinD bridge → Sandbox VM → host.docker.internal:3128 → Host proxy → chatgpt.com/backend-api/codex/responses
 ```
 
 **"Bypass" does not mean traffic skips the proxy.** It means the proxy passes traffic through without MITM inspection. Node.js doesn't automatically use `HTTP_PROXY` env vars — you need explicit `HttpsProxyAgent` configuration in every HTTP/WebSocket client.
@@ -325,7 +325,7 @@ All bind-mounted paths must be under the workspace directory. Check:
 - Is the CA cert copied to the project root?
 - Has the empty `.env` shadow file been created?
 
-### Agent containers can't reach Anthropic API
+### Agent containers can't reach OpenAI API
 Verify proxy env vars are forwarded to agent containers. Check container logs for `HTTP_PROXY=http://host.docker.internal:3128`.
 
 ### WhatsApp error 405

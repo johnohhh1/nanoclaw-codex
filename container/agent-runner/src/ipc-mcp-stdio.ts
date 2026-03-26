@@ -4,6 +4,7 @@
  * Reads context from environment variables, writes IPC files for the host.
  */
 
+import { ChildProcess, spawn } from 'child_process';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -14,11 +15,33 @@ import { CronExpressionParser } from 'cron-parser';
 const IPC_DIR = '/workspace/ipc';
 const MESSAGES_DIR = path.join(IPC_DIR, 'messages');
 const TASKS_DIR = path.join(IPC_DIR, 'tasks');
+const SUBAGENTS_DIR = path.join(IPC_DIR, 'subagents');
 
 // Context from environment variables (set by the agent runner)
 const chatJid = process.env.NANOCLAW_CHAT_JID!;
 const groupFolder = process.env.NANOCLAW_GROUP_FOLDER!;
 const isMain = process.env.NANOCLAW_IS_MAIN === '1';
+
+interface CodexEvent {
+  type?: string;
+  thread_id?: string;
+  error?: { message?: string };
+  message?: string;
+}
+
+interface SubagentState {
+  id: string;
+  name: string;
+  agentType: 'default' | 'worker' | 'explorer';
+  sessionId?: string;
+  status: 'running' | 'idle' | 'stopped' | 'error';
+  lastResult?: string;
+  lastError?: string;
+  queue: string[];
+  process?: ChildProcess;
+}
+
+const subagents = new Map<string, SubagentState>();
 
 function writeIpcFile(dir: string, data: object): string {
   fs.mkdirSync(dir, { recursive: true });
@@ -33,6 +56,151 @@ function writeIpcFile(dir: string, data: object): string {
 
   return filename;
 }
+
+function buildSubagentPrompt(
+  agentType: SubagentState['agentType'],
+  name: string,
+  prompt: string,
+): string {
+  if (agentType === 'explorer') {
+    return `You are the "${name}" subagent. Work in read-only exploration mode. Gather evidence, trace the relevant code paths, and return concise findings with file references. Do not make code changes.\n\nTask:\n${prompt}`;
+  }
+
+  if (agentType === 'worker') {
+    return `You are the "${name}" subagent. Focus on execution. Make the requested changes or perform the requested investigation and return the concrete outcome, including files touched when relevant.\n\nTask:\n${prompt}`;
+  }
+
+  return `You are the "${name}" subagent. Complete the assigned task and return a concise result.\n\nTask:\n${prompt}`;
+}
+
+function getSubagentState(id: string): SubagentState | undefined {
+  return subagents.get(id);
+}
+
+function startSubagentTurn(state: SubagentState, prompt: string): void {
+  if (state.status === 'stopped' || state.process) {
+    return;
+  }
+
+  fs.mkdirSync(SUBAGENTS_DIR, { recursive: true });
+  const outputFile = path.join(
+    SUBAGENTS_DIR,
+    `${state.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`,
+  );
+
+  const args: string[] = state.sessionId
+    ? ['exec', 'resume', state.sessionId, '-']
+    : ['exec', '-'];
+
+  args.push(
+    '--json',
+    '--color', 'never',
+    '--skip-git-repo-check',
+    '--dangerously-bypass-approvals-and-sandbox',
+    '--search',
+    '-C', '/workspace/group',
+    '-o', outputFile,
+  );
+
+  if (state.agentType === 'explorer') {
+    args.push('-s', 'read-only');
+  }
+
+  const child = spawn('codex', args, {
+    cwd: '/workspace/group',
+    env: process.env,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  state.process = child;
+  state.status = 'running';
+  state.lastError = undefined;
+
+  let stdoutBuffer = '';
+  let stderrBuffer = '';
+  let fatalError: string | undefined;
+
+  const handleStdoutLine = (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    try {
+      const event = JSON.parse(trimmed) as CodexEvent;
+      if (event.type === 'thread.started' && event.thread_id) {
+        state.sessionId = event.thread_id;
+      } else if (event.type === 'turn.failed') {
+        fatalError = event.error?.message || event.message || 'Codex turn failed';
+      } else if (event.type === 'error' && event.message && !fatalError) {
+        fatalError = event.message;
+      }
+    } catch {
+      // ignore non-JSON lines
+    }
+  };
+
+  child.stdout.on('data', (chunk) => {
+    stdoutBuffer += chunk.toString();
+    let newlineIndex = stdoutBuffer.indexOf('\n');
+    while (newlineIndex !== -1) {
+      handleStdoutLine(stdoutBuffer.slice(0, newlineIndex));
+      stdoutBuffer = stdoutBuffer.slice(newlineIndex + 1);
+      newlineIndex = stdoutBuffer.indexOf('\n');
+    }
+  });
+
+  child.stderr.on('data', (chunk) => {
+    stderrBuffer += chunk.toString();
+  });
+
+  child.on('close', (code) => {
+    state.process = undefined;
+    if (stdoutBuffer.trim()) {
+      handleStdoutLine(stdoutBuffer);
+    }
+
+    if (code === 0) {
+      try {
+        if (fs.existsSync(outputFile)) {
+          state.lastResult = fs.readFileSync(outputFile, 'utf-8').trim();
+        }
+      } catch (err) {
+        state.lastError = err instanceof Error ? err.message : String(err);
+      }
+      state.status = 'idle';
+    } else {
+      state.lastError =
+        fatalError ||
+        stderrBuffer.trim() ||
+        `codex exited with code ${code ?? 'unknown'}`;
+      state.status = 'error';
+    }
+
+    if (state.queue.length > 0) {
+      const nextPrompt = state.queue.shift();
+      if (nextPrompt) {
+        startSubagentTurn(state, nextPrompt);
+      }
+    }
+  });
+
+  child.stdin.write(buildSubagentPrompt(state.agentType, state.name, prompt));
+  child.stdin.end();
+}
+
+async function waitForSubagent(
+  state: SubagentState,
+  timeoutMs: number,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (state.process && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+}
+
+process.on('exit', () => {
+  for (const state of subagents.values()) {
+    state.process?.kill('SIGTERM');
+  }
+});
 
 const server = new McpServer({
   name: 'nanoclaw',
@@ -59,6 +227,168 @@ server.tool(
     writeIpcFile(MESSAGES_DIR, data);
 
     return { content: [{ type: 'text' as const, text: 'Message sent.' }] };
+  },
+);
+
+server.tool(
+  'team_create',
+  'Spawn a Codex subagent for a delegated task. Use this when the work can run in parallel or should be isolated from the parent context.',
+  {
+    name: z.string().describe('Short subagent name or role label'),
+    prompt: z.string().describe('Task instructions for the subagent'),
+    agent_type: z
+      .enum(['default', 'worker', 'explorer'])
+      .default('worker')
+      .describe('worker=execution focused, explorer=read-only investigation, default=general purpose'),
+  },
+  async (args) => {
+    const id = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const state: SubagentState = {
+      id,
+      name: args.name,
+      agentType: args.agent_type,
+      status: 'idle',
+      queue: [],
+    };
+    subagents.set(id, state);
+    startSubagentTurn(state, args.prompt);
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `Started subagent ${id} (${args.agent_type}). Use task_output to check results, team_send_message to send follow-up instructions, or task_stop to cancel it.`,
+        },
+      ],
+    };
+  },
+);
+
+server.tool(
+  'team_send_message',
+  'Send follow-up instructions to an existing subagent. If it is currently running, the message is queued and will run as the next turn.',
+  {
+    task_id: z.string().describe('Subagent ID returned from team_create'),
+    prompt: z.string().describe('Follow-up instructions for the subagent'),
+  },
+  async (args) => {
+    const state = getSubagentState(args.task_id);
+    if (!state) {
+      return {
+        content: [{ type: 'text' as const, text: `Unknown subagent: ${args.task_id}` }],
+        isError: true,
+      };
+    }
+    if (state.status === 'stopped') {
+      return {
+        content: [{ type: 'text' as const, text: `Subagent ${args.task_id} is stopped.` }],
+        isError: true,
+      };
+    }
+
+    if (state.process) {
+      state.queue.push(args.prompt);
+      return {
+        content: [{ type: 'text' as const, text: `Queued follow-up for ${args.task_id}.` }],
+      };
+    }
+
+    startSubagentTurn(state, args.prompt);
+    return {
+      content: [{ type: 'text' as const, text: `Sent follow-up to ${args.task_id}.` }],
+    };
+  },
+);
+
+server.tool(
+  'task_output',
+  'Get the latest output from a delegated subagent. Optionally wait for the current turn to finish.',
+  {
+    task_id: z.string().describe('Subagent ID returned from team_create'),
+    wait: z.boolean().default(false).describe('Wait for the current turn to finish before reading output'),
+    timeout_seconds: z.number().int().positive().max(600).default(60).describe('Maximum time to wait when wait=true'),
+  },
+  async (args) => {
+    const state = getSubagentState(args.task_id);
+    if (!state) {
+      return {
+        content: [{ type: 'text' as const, text: `Unknown subagent: ${args.task_id}` }],
+        isError: true,
+      };
+    }
+
+    if (args.wait && state.process) {
+      await waitForSubagent(state, args.timeout_seconds * 1000);
+    }
+
+    const lines = [
+      `id: ${state.id}`,
+      `name: ${state.name}`,
+      `status: ${state.status}`,
+      `session_id: ${state.sessionId || 'none'}`,
+    ];
+
+    if (state.lastError) {
+      lines.push(`error: ${state.lastError}`);
+    }
+    if (state.lastResult) {
+      lines.push('');
+      lines.push(state.lastResult);
+    }
+
+    return { content: [{ type: 'text' as const, text: lines.join('\n') }] };
+  },
+);
+
+server.tool(
+  'task_stop',
+  'Stop a running subagent and clear any queued follow-up work.',
+  {
+    task_id: z.string().describe('Subagent ID returned from team_create'),
+  },
+  async (args) => {
+    const state = getSubagentState(args.task_id);
+    if (!state) {
+      return {
+        content: [{ type: 'text' as const, text: `Unknown subagent: ${args.task_id}` }],
+        isError: true,
+      };
+    }
+
+    state.queue = [];
+    state.status = 'stopped';
+    state.process?.kill('SIGTERM');
+    state.process = undefined;
+
+    return {
+      content: [{ type: 'text' as const, text: `Stopped subagent ${args.task_id}.` }],
+    };
+  },
+);
+
+server.tool(
+  'team_delete',
+  'Alias for task_stop. Stops and clears a delegated subagent.',
+  {
+    task_id: z.string().describe('Subagent ID returned from team_create'),
+  },
+  async (args) => {
+    const state = getSubagentState(args.task_id);
+    if (!state) {
+      return {
+        content: [{ type: 'text' as const, text: `Unknown subagent: ${args.task_id}` }],
+        isError: true,
+      };
+    }
+
+    state.queue = [];
+    state.status = 'stopped';
+    state.process?.kill('SIGTERM');
+    state.process = undefined;
+
+    return {
+      content: [{ type: 'text' as const, text: `Deleted subagent ${args.task_id}.` }],
+    };
   },
 );
 

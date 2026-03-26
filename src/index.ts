@@ -33,6 +33,7 @@ import {
   getAllRegisteredGroups,
   getAllSessions,
   getAllTasks,
+  getGroupSkills,
   getMessagesSince,
   getNewMessages,
   getRouterState,
@@ -58,6 +59,13 @@ import {
   loadSenderAllowlist,
   shouldDropMessage,
 } from './sender-allowlist.js';
+import {
+  addSkillToGroup,
+  createSkill,
+  formatSkillsReport,
+  getSkillByName,
+  removeSkillFromGroup,
+} from './skills.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
@@ -135,14 +143,14 @@ function registerGroup(jid: string, group: RegisteredGroup): void {
   // Create group folder
   fs.mkdirSync(path.join(groupDir, 'logs'), { recursive: true });
 
-  // Copy CLAUDE.md template into the new group folder so agents have
+  const groupMdFile = path.join(groupDir, 'AGENTS.md');
+  // Copy AGENTS.md template into the new group folder so agents have
   // identity and instructions from the first run.  (Fixes #1391)
-  const groupMdFile = path.join(groupDir, 'CLAUDE.md');
   if (!fs.existsSync(groupMdFile)) {
     const templateFile = path.join(
       GROUPS_DIR,
       group.isMain ? 'main' : 'global',
-      'CLAUDE.md',
+      'AGENTS.md',
     );
     if (fs.existsSync(templateFile)) {
       let content = fs.readFileSync(templateFile, 'utf-8');
@@ -151,7 +159,7 @@ function registerGroup(jid: string, group: RegisteredGroup): void {
         content = content.replace(/You are Andy/g, `You are ${ASSISTANT_NAME}`);
       }
       fs.writeFileSync(groupMdFile, content);
-      logger.info({ folder: group.folder }, 'Created CLAUDE.md from template');
+      logger.info({ folder: group.folder }, 'Created AGENTS.md from template');
     }
   }
 
@@ -319,6 +327,7 @@ async function runAgent(
 ): Promise<'success' | 'error'> {
   const isMain = group.isMain === true;
   const sessionId = sessions[group.folder];
+  const activeSkills = getGroupSkills(group.folder);
 
   // Update tasks snapshot for container to read (filtered by group)
   const tasks = getAllTasks();
@@ -366,6 +375,7 @@ async function runAgent(
         chatJid,
         isMain,
         assistantName: ASSISTANT_NAME,
+        activeSkills,
       },
       (proc, containerName) =>
         queue.registerProcess(chatJid, proc, containerName, group.folder),
@@ -583,14 +593,99 @@ async function main(): Promise<void> {
     }
   }
 
+  async function handleSkillsCommand(
+    chatJid: string,
+    raw: string,
+  ): Promise<void> {
+    const group = registeredGroups[chatJid];
+    if (!group) return;
+
+    const channel = findChannel(channels, chatJid);
+    if (!channel) return;
+
+    const parts = raw.trim().split(/\s+/);
+    if (parts.length === 1) {
+      await channel.sendMessage(chatJid, formatSkillsReport(group.folder));
+      return;
+    }
+
+    if (parts[1] === 'create') {
+      if (parts.length !== 3) {
+        await channel.sendMessage(chatJid, 'Usage:\n/skills create <name>');
+        return;
+      }
+
+      try {
+        const created = createSkill(parts[2], {
+          resources: 'scripts,references,assets',
+        });
+        await channel.sendMessage(
+          chatJid,
+          `Created skill "${created.name}" at ${path.relative(process.cwd(), created.dir)}.`,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        await channel.sendMessage(chatJid, `Skill creation failed: ${message}`);
+      }
+      return;
+    }
+
+    if (parts.length !== 3) {
+      await channel.sendMessage(
+        chatJid,
+        'Usage:\n/skills\n/skills add <name>\n/skills remove <name>\n/skills create <name>',
+      );
+      return;
+    }
+
+    const [, action, skillName] = parts;
+    const skill = getSkillByName(skillName);
+    if (!skill) {
+      await channel.sendMessage(
+        chatJid,
+        `Unknown skill "${skillName}". Run /skills to see available skills.`,
+      );
+      return;
+    }
+
+    if (action === 'add') {
+      addSkillToGroup(group.folder, skillName);
+      await channel.sendMessage(
+        chatJid,
+        `Installed skill "${skillName}" for ${group.name}.`,
+      );
+      return;
+    }
+
+    if (action === 'remove') {
+      removeSkillFromGroup(group.folder, skillName);
+      await channel.sendMessage(
+        chatJid,
+        `Removed skill "${skillName}" from ${group.name}.`,
+      );
+      return;
+    }
+
+    await channel.sendMessage(
+      chatJid,
+      'Usage:\n/skills\n/skills add <name>\n/skills remove <name>\n/skills create <name>',
+    );
+  }
+
   // Channel callbacks (shared by all channels)
   const channelOpts = {
     onMessage: (chatJid: string, msg: NewMessage) => {
-      // Remote control commands — intercept before storage
       const trimmed = msg.content.trim();
       if (trimmed === '/remote-control' || trimmed === '/remote-control-end') {
         handleRemoteControl(trimmed, chatJid, msg).catch((err) =>
           logger.error({ err, chatJid }, 'Remote control command error'),
+        );
+        return;
+      }
+
+      if (trimmed === '/skills' || trimmed.startsWith('/skills ')) {
+        handleSkillsCommand(chatJid, trimmed).catch((err) =>
+          logger.error({ err, chatJid }, 'Skills command error'),
         );
         return;
       }

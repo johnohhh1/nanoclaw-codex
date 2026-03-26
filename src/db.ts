@@ -82,6 +82,12 @@ function createSchema(database: Database.Database): void {
       container_config TEXT,
       requires_trigger INTEGER DEFAULT 1
     );
+    CREATE TABLE IF NOT EXISTS group_skills (
+      group_folder TEXT NOT NULL,
+      skill_name TEXT NOT NULL,
+      installed_at TEXT NOT NULL,
+      PRIMARY KEY (group_folder, skill_name)
+    );
   `);
 
   // Add context_mode column if it doesn't exist (migration for existing DBs)
@@ -654,6 +660,37 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
     };
   }
   return result;
+}
+
+// --- Group skill accessors ---
+
+export function installGroupSkill(groupFolder: string, skillName: string): void {
+  db.prepare(
+    `
+      INSERT OR REPLACE INTO group_skills (group_folder, skill_name, installed_at)
+      VALUES (?, ?, ?)
+    `,
+  ).run(groupFolder, skillName, new Date().toISOString());
+}
+
+export function removeGroupSkill(groupFolder: string, skillName: string): void {
+  db.prepare(
+    'DELETE FROM group_skills WHERE group_folder = ? AND skill_name = ?',
+  ).run(groupFolder, skillName);
+}
+
+export function getGroupSkills(groupFolder: string): string[] {
+  const rows = db
+    .prepare(
+      `
+      SELECT skill_name
+      FROM group_skills
+      WHERE group_folder = ?
+      ORDER BY skill_name
+    `,
+    )
+    .all(groupFolder) as Array<{ skill_name: string }>;
+  return rows.map((row) => row.skill_name);
 }
 
 // --- JSON migration ---

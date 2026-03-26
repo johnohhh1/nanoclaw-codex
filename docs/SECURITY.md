@@ -42,11 +42,11 @@ private_key, .secret
 
 **Read-Only Project Root:**
 
-The main group's project root is mounted read-only. Writable paths the agent needs (group folder, IPC, `.claude/`) are mounted separately. This prevents the agent from modifying host application code (`src/`, `dist/`, `package.json`, etc.) which would bypass the sandbox entirely on next restart.
+The main group's project root is mounted read-only. Writable paths the agent needs (group folder, IPC, `.codex/`) are mounted separately. This prevents the agent from modifying host application code (`src/`, `dist/`, `package.json`, etc.) which would bypass the sandbox entirely on next restart.
 
 ### 3. Session Isolation
 
-Each group has isolated Claude sessions at `data/sessions/{group}/.claude/`:
+Each group has isolated Codex sessions at `data/sessions/{group}/.codex/`:
 - Groups cannot see other groups' conversation history
 - Session data includes full message history and file contents read
 - Prevents cross-group information disclosure
@@ -72,7 +72,7 @@ Real API credentials **never enter containers**. Instead, the host runs an HTTP 
 1. Host starts a credential proxy on `CREDENTIAL_PROXY_PORT` (default: 3001)
 2. Containers receive `ANTHROPIC_BASE_URL=http://host.docker.internal:<port>` and `ANTHROPIC_API_KEY=placeholder`
 3. The SDK sends API requests to the proxy with the placeholder key
-4. The proxy strips placeholder auth, injects real credentials (`x-api-key` or `Authorization: Bearer`), and forwards to `api.anthropic.com`
+4. The proxy strips placeholder auth, injects real credentials (`x-api-key` or `Authorization: Bearer`), and forwards to `chatgpt.com/backend-api/codex/responses`
 5. Agents cannot discover real credentials — not in environment, stdin, files, or `/proc`
 
 **NOT Mounted:**

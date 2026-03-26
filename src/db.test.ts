@@ -6,9 +6,12 @@ import {
   deleteTask,
   getAllChats,
   getAllRegisteredGroups,
+  getGroupSkills,
   getMessagesSince,
   getNewMessages,
   getTaskById,
+  installGroupSkill,
+  removeGroupSkill,
   setRegisteredGroup,
   storeChatMetadata,
   storeMessage,
@@ -224,6 +227,28 @@ describe('getMessagesSince', () => {
       'Andy',
     );
     expect(msgs).toHaveLength(0);
+  });
+});
+
+describe('group_skills', () => {
+  it('installs and lists skills per group', () => {
+    installGroupSkill('main', 'capabilities');
+    installGroupSkill('main', 'status');
+    installGroupSkill('other', 'agent-browser');
+
+    expect(getGroupSkills('main')).toEqual(['capabilities', 'status']);
+    expect(getGroupSkills('other')).toEqual(['agent-browser']);
+  });
+
+  it('removes a skill from a group without affecting others', () => {
+    installGroupSkill('main', 'capabilities');
+    installGroupSkill('main', 'status');
+    installGroupSkill('other', 'status');
+
+    removeGroupSkill('main', 'status');
+
+    expect(getGroupSkills('main')).toEqual(['capabilities']);
+    expect(getGroupSkills('other')).toEqual(['status']);
   });
 });
 

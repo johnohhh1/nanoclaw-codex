@@ -36,24 +36,24 @@ For detailed release notes, see the [full changelog on the documentation site](h
 
 ## [1.2.14] - 2026-03-14
 
-- Added `/remote-control` command for host-level Claude Code access from within containers
+- Added host-level remote-control command in the pre-port runtime
 
 ## [1.2.13] - 2026-03-14
 
 **Breaking:** Skills are now git branches, channels are separate fork repos.
 
-- Skills live as `skill/*` git branches merged via `git merge`
+- Pre-port skills lived as `skill/*` git branches merged via `git merge`
 - Added Docker Sandboxes support
 - Fixed setup registration to use correct CLI commands
 
 ## [1.2.12] - 2026-03-08
 
-- Added `/compact` skill for manual context compaction
+- Added manual context compaction in the pre-port runtime
 - Enhanced container environment isolation via credential proxy
 
 ## [1.2.11] - 2026-03-08
 
-- Added PDF reader, image vision, and WhatsApp reactions skills
+- Added PDF reader, image vision, and WhatsApp reactions in the pre-port runtime
 - Fixed task container to close promptly when agent uses IPC-only messaging
 
 ## [1.2.10] - 2026-03-06
@@ -70,12 +70,12 @@ For detailed release notes, see the [full changelog on the documentation site](h
 
 ## [1.2.7] - 2026-03-06
 
-- Added `/add-ollama` skill for local model inference
+- Added local model inference in the pre-port runtime
 - Added `update_task` tool and return task ID from `schedule_task`
 
 ## [1.2.6] - 2026-03-04
 
-- Updated `claude-agent-sdk` to 0.2.68
+- Updated `codex-cli` to 0.2.68
 
 ## [1.2.5] - 2026-03-04
 
@@ -91,7 +91,7 @@ For detailed release notes, see the [full changelog on the documentation site](h
 
 ## [1.2.2] - 2026-03-04
 
-- Added `/use-local-whisper` skill for local voice transcription
+- Added local voice transcription in the pre-port runtime
 - Atomic task claims prevent scheduled tasks from executing twice
 
 ## [1.2.1] - 2026-03-02
@@ -100,7 +100,7 @@ For detailed release notes, see the [full changelog on the documentation site](h
 
 ## [1.2.0] - 2026-03-02
 
-**Breaking:** WhatsApp removed from core, now a skill. Run `/add-whatsapp` to re-add.
+**Historical:** WhatsApp was removed from core and handled outside the base runtime.
 
 - Channel registry: channels self-register at startup via `registerChannel()` factory pattern
 - `isMain` flag replaces folder-name-based main group detection
@@ -118,12 +118,12 @@ For detailed release notes, see the [full changelog on the documentation site](h
 ## [1.1.4] - 2026-03-01
 
 - Added third-party model support
-- Added `/update-nanoclaw` skill for syncing with upstream
+- Added upstream sync workflow in the pre-port runtime
 
 ## [1.1.3] - 2026-02-25
 
-- Added `/add-slack` skill
-- Restructured Gmail skill for new architecture
+- Added Slack integration in the pre-port runtime
+- Restructured Gmail integration for the old architecture
 
 ## [1.1.2] - 2026-02-24
 
@@ -131,10 +131,10 @@ For detailed release notes, see the [full changelog on the documentation site](h
 
 ## [1.1.1] - 2026-02-24
 
-- Added Qodo skills and codebase intelligence
+- Added Qodo integrations and codebase intelligence
 - Fixed WhatsApp 405 connection failures
 
 ## [1.1.0] - 2026-02-23
 
-- Added `/update` skill to pull upstream changes from within Claude Code
+- Added an update workflow to pull upstream changes from within the tool
 - Enhanced container environment isolation via credential proxy

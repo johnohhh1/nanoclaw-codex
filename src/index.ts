@@ -93,10 +93,7 @@ async function connectChannelSafely(
       channel.connect(),
       new Promise<never>((_, reject) => {
         setTimeout(
-          () =>
-            reject(
-              new Error(`connect timeout after ${timeoutMs}ms`),
-            ),
+          () => reject(new Error(`connect timeout after ${timeoutMs}ms`)),
           timeoutMs,
         );
       }),
@@ -104,7 +101,10 @@ async function connectChannelSafely(
     return true;
   } catch (err) {
     logger.warn(
-      { channel: channel.name, err: err instanceof Error ? err.message : String(err) },
+      {
+        channel: channel.name,
+        err: err instanceof Error ? err.message : String(err),
+      },
       'Channel connect failed; skipping channel startup',
     );
     try {
@@ -749,6 +749,12 @@ async function main(): Promise<void> {
       isGroup?: boolean,
     ) => storeChatMetadata(chatJid, timestamp, name, channel, isGroup),
     registeredGroups: () => registeredGroups,
+    ensureRegisteredChat: (chatJid: string, group: RegisteredGroup) => {
+      const existing = registeredGroups[chatJid];
+      if (existing) return existing;
+      registerGroup(chatJid, group);
+      return registeredGroups[chatJid];
+    },
   };
 
   // Create and connect all registered channels.

@@ -148,7 +148,10 @@ export class TelegramChannel implements Channel {
     this.bot.command('restart', async (ctx) => {
       if (!(await requireMainChat(this.opts, ctx))) return;
 
-      logger.warn({ chatId: ctx.chat.id }, 'Telegram requested NanoClaw restart');
+      logger.warn(
+        { chatId: ctx.chat.id },
+        'Telegram requested NanoClaw restart',
+      );
       await ctx.reply('Restarting NanoClaw now.');
       setTimeout(() => process.exit(0), 250);
     });

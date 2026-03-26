@@ -265,16 +265,12 @@ describe('container mount configuration', () => {
       (arg) => arg.includes('/workspace/') || arg.includes(':/app/src'),
     );
     expect(spawnArgs).toContain('-v');
-    expect(
-      mountArgs.includes(`${projectRoot}:/workspace/project`),
-    ).toBe(true);
+    expect(mountArgs.includes(`${projectRoot}:/workspace/project`)).toBe(true);
     expect(mountArgs.includes(`${projectRoot}:/workspace/project:ro`)).toBe(
       false,
     );
     expect(
-      mountArgs.includes(
-        `${projectRoot}/container/agent-runner/src:/app/src`,
-      ),
+      mountArgs.includes(`${projectRoot}/container/agent-runner/src:/app/src`),
     ).toBe(true);
 
     emitOutputMarker(fakeProc, {

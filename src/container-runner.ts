@@ -276,7 +276,10 @@ async function buildContainerArgs(
     args.push('-e', 'HOME=/home/node');
   }
 
-  if (CONTAINER_MOUNT_DOCKER_SOCKET && fs.existsSync(CONTAINER_DOCKER_SOCKET_PATH)) {
+  if (
+    CONTAINER_MOUNT_DOCKER_SOCKET &&
+    fs.existsSync(CONTAINER_DOCKER_SOCKET_PATH)
+  ) {
     try {
       const dockerSocketStats = fs.statSync(CONTAINER_DOCKER_SOCKET_PATH);
       args.push('--group-add', `${dockerSocketStats.gid}`);

@@ -17,7 +17,7 @@ What exists here now:
 - `AGENTS.md` based memory/instructions
 - Host-side `SKILL.md` based skills with `/skills` install/remove/create
 - Scheduling, routing, SQLite state, and group management
-- Telegram and WhatsApp channel adapters in `src/channels/`
+- Telegram, WhatsApp, and Web UI channel adapters in `src/channels/`
 - Codex-managed subagent delegation via the in-container MCP server
 - Container-local helper skills in `container/skills/`
 
@@ -58,8 +58,29 @@ NanoClaw is a small Node.js orchestrator.
 Currently shipped channel adapters:
 - Telegram
 - WhatsApp
+- Web UI
 
 Slack, Discord, Gmail, and similar integrations are not currently implemented in this branch.
+
+## Web UI Channel
+
+NanoClaw can expose a local browser chat channel using `nanoclaw-web-ui`.
+
+Configure it in `.env`:
+
+```ini
+WEB_UI_PORT=3000
+WEB_UI_AUTH_TOKEN=
+```
+
+Behavior:
+- the Web UI channel is only loaded when `WEB_UI_PORT` is set
+- it serves a local chat UI on `http://localhost:<WEB_UI_PORT>`
+- `WEB_UI_AUTH_TOKEN` is optional; when set, the browser must provide it to connect
+- the UI uses `ASSISTANT_NAME` for the displayed assistant identity
+- microphone input uses the browser Web Speech API client-side when available
+
+The web channel uses the same inbound message pipeline as Telegram: messages are stored, routed through the normal group queue, and replies are sent back over the active WebSocket session.
 
 ## Main Container Behavior
 

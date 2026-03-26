@@ -11,9 +11,10 @@ export async function loadConfiguredChannels(): Promise<void> {
   if (loaded) return;
   loaded = true;
 
-  const envVars = readEnvFile(['TELEGRAM_BOT_TOKEN']);
+  const envVars = readEnvFile(['TELEGRAM_BOT_TOKEN', 'WEB_UI_PORT']);
   const telegramToken =
     process.env.TELEGRAM_BOT_TOKEN || envVars.TELEGRAM_BOT_TOKEN || '';
+  const webUiPort = process.env.WEB_UI_PORT || envVars.WEB_UI_PORT || '';
 
   if (telegramToken) {
     await import('./telegram.js');
@@ -32,5 +33,12 @@ export async function loadConfiguredChannels(): Promise<void> {
     logger.info('Loaded WhatsApp channel');
   } else {
     logger.info('Skipping WhatsApp channel: no auth state found');
+  }
+
+  if (webUiPort) {
+    await import('./web.js');
+    logger.info({ port: webUiPort }, 'Loaded Web UI channel');
+  } else {
+    logger.info('Skipping Web UI channel: WEB_UI_PORT not configured');
   }
 }

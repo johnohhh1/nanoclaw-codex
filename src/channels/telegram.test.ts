@@ -141,12 +141,12 @@ describe('TelegramChannel', () => {
     const exitSpy = vi
       .spyOn(process, 'exit')
       .mockImplementation((() => undefined) as never);
-    const timeoutSpy = vi
-      .spyOn(global, 'setTimeout')
-      .mockImplementation(((fn: (...args: any[]) => void) => {
-        fn();
-        return 0 as any;
-      }) as typeof setTimeout);
+    const timeoutSpy = vi.spyOn(global, 'setTimeout').mockImplementation(((
+      fn: (...args: any[]) => void,
+    ) => {
+      fn();
+      return 0 as any;
+    }) as typeof setTimeout);
 
     const channel = new TelegramChannel('token', createOpts());
     await channel.connect();

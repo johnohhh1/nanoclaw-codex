@@ -67,6 +67,13 @@ Use Slack mrkdwn syntax. Run `/slack-formatting` for the full reference. Key rul
 
 No `##` headings. No `[links](url)`. No `**double stars**`.
 
+### Web UI (folder starts with `web_`)
+
+Standard Markdown: `**bold**`, `*italic*`, `[links](url)`, `# headings`, fenced code blocks.
+
+The Web UI runs locally at `http://localhost:3000` when `WEB_UI_PORT` is configured.
+Browser microphone input is transcribed client-side before it reaches you, so treat it the same as typed text.
+
 ### Discord (folder starts with `discord_`)
 
 Standard Markdown: `**bold**`, `*italic*`, `[links](url)`, `# headings`.

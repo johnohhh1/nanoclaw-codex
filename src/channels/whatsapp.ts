@@ -135,7 +135,9 @@ export class WhatsAppChannel implements Channel {
             }, 5000);
           });
         } else {
-          logger.warn('WhatsApp logged out. Channel will stay disconnected until re-authenticated.');
+          logger.warn(
+            'WhatsApp logged out. Channel will stay disconnected until re-authenticated.',
+          );
         }
       } else if (connection === 'open') {
         this.connected = true;
@@ -363,8 +365,7 @@ export class WhatsAppChannel implements Channel {
 
 registerChannel('whatsapp', (opts) => {
   const authDir = path.join(STORE_DIR, 'auth');
-  const hasAuth =
-    fs.existsSync(authDir) && fs.readdirSync(authDir).length > 0;
+  const hasAuth = fs.existsSync(authDir) && fs.readdirSync(authDir).length > 0;
   if (!hasAuth) {
     logger.warn('WhatsApp: auth state not found, skipping channel');
     return null;

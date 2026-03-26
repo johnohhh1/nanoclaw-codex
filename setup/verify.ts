@@ -98,12 +98,11 @@ export async function run(_args: string[]): Promise<void> {
 
   // 3. Check credentials
   let credentials = 'missing';
-  const envFile = path.join(projectRoot, '.env');
-  if (fs.existsSync(envFile)) {
-    const envContent = fs.readFileSync(envFile, 'utf-8');
-    if (/^(CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY|ONECLI_URL)=/m.test(envContent)) {
-      credentials = 'configured';
-    }
+  try {
+    execSync('codex --version', { stdio: 'ignore' });
+    credentials = 'codex_cli_available';
+  } catch {
+    credentials = 'missing';
   }
 
   // 4. Check channel auth (detect configured channels by credentials)

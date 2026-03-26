@@ -1,161 +1,182 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
-# setup.sh — Bootstrap script for NanoClaw
-# Handles Node.js/npm setup, then hands off to the Node.js setup modules.
-# This is the only bash script in the setup flow.
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT_DIR"
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_FILE="$PROJECT_ROOT/logs/setup.log"
-
-mkdir -p "$PROJECT_ROOT/logs"
-
-log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [bootstrap] $*" >> "$LOG_FILE"; }
-
-# --- Platform detection ---
-
-detect_platform() {
-  local uname_s
-  uname_s=$(uname -s)
-  case "$uname_s" in
-    Darwin*) PLATFORM="macos" ;;
-    Linux*)  PLATFORM="linux" ;;
-    *)       PLATFORM="unknown" ;;
-  esac
-
-  IS_WSL="false"
-  if [ "$PLATFORM" = "linux" ] && [ -f /proc/version ]; then
-    if grep -qi 'microsoft\|wsl' /proc/version 2>/dev/null; then
-      IS_WSL="true"
-    fi
-  fi
-
-  IS_ROOT="false"
-  if [ "$(id -u)" -eq 0 ]; then
-    IS_ROOT="true"
-  fi
-
-  log "Platform: $PLATFORM, WSL: $IS_WSL, Root: $IS_ROOT"
+step() {
+  printf '\n== %s ==\n' "$1"
 }
 
-# --- Node.js check ---
-
-check_node() {
-  NODE_OK="false"
-  NODE_VERSION="not_found"
-  NODE_PATH_FOUND=""
-
-  if command -v node >/dev/null 2>&1; then
-    NODE_VERSION=$(node --version 2>/dev/null | sed 's/^v//')
-    NODE_PATH_FOUND=$(command -v node)
-    local major
-    major=$(echo "$NODE_VERSION" | cut -d. -f1)
-    if [ "$major" -ge 20 ] 2>/dev/null; then
-      NODE_OK="true"
-    fi
-    log "Node $NODE_VERSION at $NODE_PATH_FOUND (major=$major, ok=$NODE_OK)"
-  else
-    log "Node not found"
-  fi
-}
-
-# --- npm install ---
-
-install_deps() {
-  DEPS_OK="false"
-  NATIVE_OK="false"
-
-  if [ "$NODE_OK" = "false" ]; then
-    log "Skipping npm install — Node not available"
-    return
-  fi
-
-  cd "$PROJECT_ROOT"
-
-  # npm install with --unsafe-perm if root (needed for native modules)
-  local npm_flags=""
-  if [ "$IS_ROOT" = "true" ]; then
-    npm_flags="--unsafe-perm"
-    log "Running as root, using --unsafe-perm"
-  fi
-
-  log "Running npm ci $npm_flags"
-  if npm ci $npm_flags >> "$LOG_FILE" 2>&1; then
-    DEPS_OK="true"
-    log "npm install succeeded"
-  else
-    log "npm install failed"
-    return
-  fi
-
-  # Verify native module (better-sqlite3)
-  log "Verifying native modules"
-  if node -e "require('better-sqlite3')" >> "$LOG_FILE" 2>&1; then
-    NATIVE_OK="true"
-    log "better-sqlite3 loads OK"
-  else
-    log "better-sqlite3 failed to load"
-  fi
-}
-
-# --- Build tools check ---
-
-check_build_tools() {
-  HAS_BUILD_TOOLS="false"
-
-  if [ "$PLATFORM" = "macos" ]; then
-    if xcode-select -p >/dev/null 2>&1; then
-      HAS_BUILD_TOOLS="true"
-    fi
-  elif [ "$PLATFORM" = "linux" ]; then
-    if command -v gcc >/dev/null 2>&1 && command -v make >/dev/null 2>&1; then
-      HAS_BUILD_TOOLS="true"
-    fi
-  fi
-
-  log "Build tools: $HAS_BUILD_TOOLS"
-}
-
-# --- Main ---
-
-log "=== Bootstrap started ==="
-
-detect_platform
-check_node
-install_deps
-check_build_tools
-
-# Emit status block
-STATUS="success"
-if [ "$NODE_OK" = "false" ]; then
-  STATUS="node_missing"
-elif [ "$DEPS_OK" = "false" ]; then
-  STATUS="deps_failed"
-elif [ "$NATIVE_OK" = "false" ]; then
-  STATUS="native_failed"
-fi
-
-cat <<EOF
-=== NANOCLAW SETUP: BOOTSTRAP ===
-PLATFORM: $PLATFORM
-IS_WSL: $IS_WSL
-IS_ROOT: $IS_ROOT
-NODE_VERSION: $NODE_VERSION
-NODE_OK: $NODE_OK
-NODE_PATH: ${NODE_PATH_FOUND:-not_found}
-DEPS_OK: $DEPS_OK
-NATIVE_OK: $NATIVE_OK
-HAS_BUILD_TOOLS: $HAS_BUILD_TOOLS
-STATUS: $STATUS
-LOG: logs/setup.log
-=== END ===
-EOF
-
-log "=== Bootstrap completed: $STATUS ==="
-
-if [ "$NODE_OK" = "false" ]; then
-  exit 2
-fi
-if [ "$DEPS_OK" = "false" ] || [ "$NATIVE_OK" = "false" ]; then
+fail() {
+  printf '\nERROR: %s\n' "$1" >&2
   exit 1
+}
+
+ask() {
+  local prompt="$1"
+  local default="${2-}"
+  local value
+  if [[ -n "$default" ]]; then
+    read -r -p "$prompt [$default]: " value
+    printf '%s' "${value:-$default}"
+  else
+    read -r -p "$prompt: " value
+    printf '%s' "$value"
+  fi
+}
+
+confirm() {
+  local prompt="$1"
+  local default="${2-y}"
+  local suffix="[Y/n]"
+  [[ "$default" == "n" ]] && suffix="[y/N]"
+  local reply
+  read -r -p "$prompt $suffix " reply
+  reply="${reply:-$default}"
+  [[ "$reply" =~ ^[Yy]$ ]]
+}
+
+upsert_env() {
+  local key="$1"
+  local value="$2"
+  local env_file="$ROOT_DIR/.env"
+  touch "$env_file"
+  if grep -q "^${key}=" "$env_file"; then
+    sed -i "s|^${key}=.*$|${key}=\"${value}\"|" "$env_file"
+  else
+    printf '%s="%s"\n' "$key" "$value" >> "$env_file"
+  fi
+}
+
+choose_runtime() {
+  if command -v docker >/dev/null 2>&1; then
+    if docker info >/dev/null 2>&1; then
+      printf 'docker'
+      return
+    fi
+  fi
+  if command -v container >/dev/null 2>&1; then
+    printf 'apple-container'
+    return
+  fi
+  fail "No supported container runtime detected. Install Docker or Apple Container first."
+}
+
+normalize_folder() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//; s/-+/-/g'
+}
+
+ensure_deps() {
+  if [[ ! -d node_modules ]]; then
+    step "Installing dependencies"
+    npm install
+  fi
+}
+
+run_step() {
+  npx tsx setup/index.ts --step "$@"
+}
+
+ensure_deps
+
+mkdir -p logs
+
+step "Detecting environment"
+run_step timezone || true
+run_step environment
+
+runtime="$(choose_runtime)"
+printf 'Using container runtime: %s\n' "$runtime"
+
+step "Choosing channel"
+printf 'Supported channels in this branch:\n'
+printf '1. Telegram\n'
+printf '2. WhatsApp\n'
+channel_choice="$(ask "Select a channel" "1")"
+case "$channel_choice" in
+  1|telegram|Telegram)
+    channel="telegram"
+    ;;
+  2|whatsapp|WhatsApp)
+    channel="whatsapp"
+    ;;
+  *)
+    fail "Unsupported channel selection: $channel_choice"
+    ;;
+esac
+
+assistant_name="$(ask "Assistant name" "Andy")"
+trigger="$(ask "Trigger word" "@${assistant_name}")"
+
+step "Configuring channel"
+if [[ "$channel" == "telegram" ]]; then
+  telegram_token="$(ask "Telegram bot token")"
+  [[ -n "$telegram_token" ]] || fail "Telegram bot token is required."
+  upsert_env "TELEGRAM_BOT_TOKEN" "$telegram_token"
+  printf '\nAdd the bot to the target chat, then send /chatid there to get the JID.\n'
+  jid="$(ask "Telegram chat JID (example: tg:-1001234567890)")"
+  [[ "$jid" == tg:* ]] || fail "Telegram JID must start with tg:"
+else
+  printf '\nWhatsApp authentication will open a QR or pairing flow.\n'
+  npm run auth
+  run_step groups
+  printf '\nIf you need a group JID, run:\n'
+  printf '  npx tsx setup/index.ts --step groups --list\n\n'
+  jid="$(ask "WhatsApp chat JID (example: 120363...@g.us or 1555...@s.whatsapp.net)")"
+  [[ "$jid" == *@g.us || "$jid" == *@s.whatsapp.net ]] || fail "Invalid WhatsApp JID format."
 fi
+
+group_name="$(ask "Display name for this chat/group")"
+default_folder="${channel}_$(normalize_folder "$group_name")"
+folder="$(ask "Folder name" "$default_folder")"
+folder="$(normalize_folder "$folder")"
+folder="${channel}_$(printf '%s' "$folder" | sed -E "s/^${channel}_//")"
+
+if confirm "Make this the main group?" "y"; then
+  main_flag="--is-main"
+  trigger_flag=""
+else
+  main_flag=""
+  if confirm "Require trigger word in this group?" "y"; then
+    trigger_flag=""
+  else
+    trigger_flag="--no-trigger-required"
+  fi
+fi
+
+step "Building container"
+run_step container --runtime "$runtime"
+
+step "Registering group"
+register_args=(
+  register
+  --jid "$jid"
+  --name "$group_name"
+  --trigger "$trigger"
+  --folder "$folder"
+  --channel "$channel"
+  --assistant-name "$assistant_name"
+)
+
+if [[ -n "$main_flag" ]]; then
+  register_args+=("$main_flag")
+fi
+if [[ -n "$trigger_flag" ]]; then
+  register_args+=("$trigger_flag")
+fi
+
+run_step "${register_args[@]}"
+
+if confirm "Install NanoClaw as a background service now?" "n"; then
+  step "Setting up service"
+  run_step service
+fi
+
+step "Verifying installation"
+run_step verify
+
+printf '\nSetup complete.\n'
+printf 'Channel: %s\n' "$channel"
+printf 'Group JID: %s\n' "$jid"
+printf 'Folder: %s\n' "$folder"

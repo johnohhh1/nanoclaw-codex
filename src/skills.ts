@@ -3,11 +3,7 @@ import path from 'path';
 import { parseDocument } from 'yaml';
 
 import { SKILLS_DIR } from './config.js';
-import {
-  getGroupSkills,
-  installGroupSkill,
-  removeGroupSkill,
-} from './db.js';
+import { getGroupSkills, installGroupSkill, removeGroupSkill } from './db.js';
 import { SkillDefinition } from './types.js';
 
 const MAX_SKILL_NAME_LENGTH = 64;
@@ -68,7 +64,8 @@ function parseSkillFrontmatter(content: string): {
     throw new Error('Frontmatter must be a YAML object');
   }
 
-  const name = 'name' in data ? String((data as Record<string, unknown>).name) : '';
+  const name =
+    'name' in data ? String((data as Record<string, unknown>).name) : '';
   const description =
     'description' in data
       ? String((data as Record<string, unknown>).description)
@@ -137,10 +134,7 @@ function createExampleResource(
   }
 
   if (resource === 'references') {
-    fs.writeFileSync(
-      path.join(resourceDir, 'reference.md'),
-      EXAMPLE_REFERENCE,
-    );
+    fs.writeFileSync(path.join(resourceDir, 'reference.md'), EXAMPLE_REFERENCE);
     return;
   }
 
@@ -197,7 +191,9 @@ export function createSkill(
   };
 }
 
-export function discoverSkills(skillsDir: string = SKILLS_DIR): SkillDefinition[] {
+export function discoverSkills(
+  skillsDir: string = SKILLS_DIR,
+): SkillDefinition[] {
   if (!fs.existsSync(skillsDir)) {
     return [];
   }

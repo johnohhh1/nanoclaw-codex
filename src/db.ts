@@ -664,7 +664,10 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
 
 // --- Group skill accessors ---
 
-export function installGroupSkill(groupFolder: string, skillName: string): void {
+export function installGroupSkill(
+  groupFolder: string,
+  skillName: string,
+): void {
   db.prepare(
     `
       INSERT OR REPLACE INTO group_skills (group_folder, skill_name, installed_at)

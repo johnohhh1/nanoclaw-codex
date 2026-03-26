@@ -15,14 +15,17 @@ What exists here now:
 - Per-group container isolation and IPC
 - Session persistence under `data/sessions/<group>/.codex/`
 - `AGENTS.md` based memory/instructions
+- Host-side `SKILL.md` based skills with `/skills` install/remove/create
 - Scheduling, routing, SQLite state, and group management
+- Telegram and WhatsApp channel adapters in `src/channels/`
+- Codex-managed subagent delegation via the in-container MCP server
 - Container-local helper skills in `container/skills/`
 
 What does not exist anymore:
-- Host-side `.claude/skills/` installation flow
 - Claude Agent SDK integration
 - Claude remote control
 - Claude-specific session and memory conventions
+- The old Claude-era `.claude/skills/` marketplace and `/add-*` installer flow
 
 ## Quick Start
 
@@ -30,12 +33,11 @@ What does not exist anymore:
 git clone https://github.com/<your-username>/nanoclaw.git
 cd nanoclaw
 npm install
-./container/build.sh
-npm run build
-npm run dev
+./setup.sh
 ```
 
-If you want to run the agent manually inside the repo, use `codex`.
+`./setup.sh` walks through environment detection, channel setup, container build,
+group registration, and verification.
 
 ## Architecture
 
@@ -49,8 +51,15 @@ NanoClaw is a small Node.js orchestrator.
 - `src/db.ts`: SQLite persistence
 - `groups/main/AGENTS.md`: main-group instructions
 - `groups/global/AGENTS.md`: shared instructions for non-main groups
+- `skills/*/SKILL.md`: repo-local Codex skills
+- `src/channels/telegram.ts`: Telegram adapter
+- `src/channels/whatsapp.ts`: WhatsApp adapter
 
-The core repo currently ships no channel implementations in `src/channels/` beyond the registry. If you want Telegram, Slack, WhatsApp, Gmail, or similar, add the channel code directly in your fork.
+Currently shipped channel adapters:
+- Telegram
+- WhatsApp
+
+Slack, Discord, Gmail, and similar integrations are not currently implemented in this branch.
 
 ## Memory Model
 
@@ -66,6 +75,7 @@ Each group also has its own session/state directory under `data/sessions/<group>
 ```bash
 npm run typecheck
 npm test
+./setup.sh
 ./container/build.sh
 cd container/agent-runner && npm run build
 ```

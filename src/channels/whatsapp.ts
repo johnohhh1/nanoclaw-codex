@@ -15,11 +15,7 @@ import {
   ASSISTANT_NAME,
   STORE_DIR,
 } from '../config.js';
-import {
-  getLastGroupSync,
-  setLastGroupSync,
-  updateChatName,
-} from '../db.js';
+import { getLastGroupSync, setLastGroupSync, updateChatName } from '../db.js';
 import { logger } from '../logger.js';
 import { registerChannel } from './registry.js';
 import {
@@ -90,10 +86,18 @@ export class WhatsAppChannel implements Channel {
 
       if (connection === 'close') {
         this.connected = false;
-        const reason = (lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)?.output?.statusCode;
+        const reason = (
+          lastDisconnect?.error as
+            | { output?: { statusCode?: number } }
+            | undefined
+        )?.output?.statusCode;
         const shouldReconnect = reason !== DisconnectReason.loggedOut;
         logger.info(
-          { reason, shouldReconnect, queuedMessages: this.outgoingQueue.length },
+          {
+            reason,
+            shouldReconnect,
+            queuedMessages: this.outgoingQueue.length,
+          },
           'Connection closed',
         );
 
@@ -163,7 +167,13 @@ export class WhatsAppChannel implements Channel {
         ).toISOString();
 
         const isGroup = chatJid.endsWith('@g.us');
-        this.opts.onChatMetadata(chatJid, timestamp, undefined, 'whatsapp', isGroup);
+        this.opts.onChatMetadata(
+          chatJid,
+          timestamp,
+          undefined,
+          'whatsapp',
+          isGroup,
+        );
 
         const groups = this.opts.registeredGroups();
         if (groups[chatJid]) {
@@ -280,7 +290,10 @@ export class WhatsAppChannel implements Channel {
     const lidUser = jid.split('@')[0].split(':')[0];
     const cached = this.lidToPhoneMap[lidUser];
     if (cached) {
-      logger.debug({ lidJid: jid, phoneJid: cached }, 'Translated LID to phone JID (cached)');
+      logger.debug(
+        { lidJid: jid, phoneJid: cached },
+        'Translated LID to phone JID (cached)',
+      );
       return cached;
     }
 
@@ -289,7 +302,10 @@ export class WhatsAppChannel implements Channel {
       if (pn) {
         const phoneJid = `${pn.split('@')[0].split(':')[0]}@s.whatsapp.net`;
         this.lidToPhoneMap[lidUser] = phoneJid;
-        logger.info({ lidJid: jid, phoneJid }, 'Translated LID to phone JID (signalRepository)');
+        logger.info(
+          { lidJid: jid, phoneJid },
+          'Translated LID to phone JID (signalRepository)',
+        );
         return phoneJid;
       }
     } catch (err) {

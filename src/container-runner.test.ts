@@ -9,7 +9,9 @@ const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
 // Mock config
 vi.mock('./config.js', () => ({
   CONTAINER_IMAGE: 'nanoclaw-agent:latest',
+  CONTAINER_DOCKER_SOCKET_PATH: '/var/run/docker.sock',
   CONTAINER_MAX_OUTPUT_SIZE: 10485760,
+  CONTAINER_MOUNT_DOCKER_SOCKET: false,
   CONTAINER_TIMEOUT: 1800000, // 30min
   DATA_DIR: '/tmp/nanoclaw-test-data',
   GROUPS_DIR: '/tmp/nanoclaw-test-groups',
@@ -99,6 +101,8 @@ vi.mock('child_process', async () => {
 
 import { runContainerAgent, ContainerOutput } from './container-runner.js';
 import type { RegisteredGroup } from './types.js';
+import fs from 'fs';
+import { spawn } from 'child_process';
 
 const testGroup: RegisteredGroup = {
   name: 'Test Group',
@@ -217,5 +221,68 @@ describe('container-runner timeout behavior', () => {
     const result = await resultPromise;
     expect(result.status).toBe('success');
     expect(result.newSessionId).toBe('session-456');
+  });
+});
+
+describe('container mount configuration', () => {
+  const projectRoot = process.cwd();
+
+  beforeEach(() => {
+    fakeProc = createFakeProcess();
+    vi.mocked(spawn).mockClear();
+    vi.mocked(fs.existsSync).mockImplementation((target) => {
+      const normalized = String(target);
+      return (
+        normalized === `${projectRoot}/.env` ||
+        normalized === `${projectRoot}/skills` ||
+        normalized === `${projectRoot}/container/agent-runner/src`
+      );
+    });
+  });
+
+  it('mounts the main project read-write and binds live agent-runner src', async () => {
+    const onOutput = vi.fn(async () => {});
+    const mainGroup: RegisteredGroup = {
+      ...testGroup,
+      folder: 'main',
+      isMain: true,
+    };
+    const resultPromise = runContainerAgent(
+      mainGroup,
+      {
+        ...testInput,
+        isMain: true,
+      },
+      () => {},
+      onOutput,
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const spawnCalls = vi.mocked(spawn).mock.calls;
+    const spawnArgs = spawnCalls[spawnCalls.length - 1]?.[1];
+    const mountArgs = (spawnArgs || []).filter(
+      (arg) => arg.includes('/workspace/') || arg.includes(':/app/src'),
+    );
+    expect(spawnArgs).toContain('-v');
+    expect(
+      mountArgs.includes(`${projectRoot}:/workspace/project`),
+    ).toBe(true);
+    expect(mountArgs.includes(`${projectRoot}:/workspace/project:ro`)).toBe(
+      false,
+    );
+    expect(
+      mountArgs.includes(
+        `${projectRoot}/container/agent-runner/src:/app/src`,
+      ),
+    ).toBe(true);
+
+    emitOutputMarker(fakeProc, {
+      status: 'success',
+      result: 'Done',
+    });
+    fakeProc.emit('close', 0);
+
+    await resultPromise;
   });
 });

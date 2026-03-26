@@ -58,7 +58,14 @@ Confirm which tool families are available to you:
 which agent-browser 2>/dev/null && echo "agent-browser: available" || echo "agent-browser: not installed"
 node --version 2>/dev/null
 codex --version 2>/dev/null
+command -v docker >/dev/null 2>&1 && echo "docker-cli: available" || echo "docker-cli: not installed"
+test -S /var/run/docker.sock && ls -l /var/run/docker.sock || echo "docker-socket: not mounted"
+if command -v docker >/dev/null 2>&1 && test -S /var/run/docker.sock; then
+  docker version --format 'docker-server: {{.Server.Version}}' 2>/dev/null || echo "docker-server: unreachable"
+fi
 ```
+
+Never claim Docker is unavailable unless the live checks above show that the CLI is missing or the socket is absent/unreachable.
 
 ### 5. Task snapshot
 
@@ -94,6 +101,9 @@ Present as a clean, readable message:
 • agent-browser: ✓ / not installed
 • Node: vXX.X.X
 • Codex: vX.X.X
+• Docker CLI: available / not installed
+• Docker socket: mounted / not mounted
+• Docker server: version / unreachable
 
 *Scheduled Tasks:*
 • N active tasks / No scheduled tasks

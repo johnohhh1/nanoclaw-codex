@@ -446,8 +446,6 @@ async function runCodexTurn(
       'exec',
       '-',
       '--json',
-      '--color',
-      'never',
       '--skip-git-repo-check',
       '--dangerously-bypass-approvals-and-sandbox',
       '-C',

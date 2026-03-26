@@ -40,9 +40,9 @@ private_key, .secret
 - Container path validation (rejects `..` and absolute paths)
 - `nonMainReadOnly` option forces read-only for non-main groups
 
-**Read-Only Project Root:**
+**Writable Main Project Root:**
 
-The main group's project root is mounted read-only. Writable paths the agent needs (group folder, IPC, `.codex/`) are mounted separately. This prevents the agent from modifying host application code (`src/`, `dist/`, `package.json`, etc.) which would bypass the sandbox entirely on next restart.
+The main group's project root is mounted read-write. This is an intentional tradeoff for the trusted admin channel so the live session can patch the real repo directly. Non-main groups still do not receive the project root mount.
 
 ### 3. Session Isolation
 
@@ -85,7 +85,7 @@ Real API credentials **never enter containers**. Instead, the host runs an HTTP 
 
 | Capability | Main Group | Non-Main Group |
 |------------|------------|----------------|
-| Project root access | `/workspace/project` (ro) | None |
+| Project root access | `/workspace/project` (rw) | None |
 | Group folder | `/workspace/group` (rw) | `/workspace/group` (rw) |
 | Global memory | Implicit via project | `/workspace/global` (ro) |
 | Additional mounts | Configurable | Read-only unless allowed |

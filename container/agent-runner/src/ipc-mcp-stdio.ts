@@ -94,7 +94,6 @@ function startSubagentTurn(state: SubagentState, prompt: string): void {
 
   args.push(
     '--json',
-    '--color', 'never',
     '--skip-git-repo-check',
     '--dangerously-bypass-approvals-and-sandbox',
     '--search',

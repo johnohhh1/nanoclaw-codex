@@ -59,7 +59,11 @@ Check for executable tools in the container:
 
 ```bash
 which agent-browser 2>/dev/null && echo "agent-browser: available" || echo "agent-browser: not found"
+command -v docker >/dev/null 2>&1 && echo "docker: available" || echo "docker: not found"
+test -S /var/run/docker.sock && echo "docker-socket: mounted" || echo "docker-socket: not mounted"
 ```
+
+If Docker is mentioned in the report, base it on these live checks only. Do not infer Docker availability from older instructions or prior sessions.
 
 ### 5. Group info
 
@@ -88,6 +92,8 @@ Present the report as a clean, readable message. Example:
 
 *Container Tools:*
 • agent-browser: ✓
+• docker: ✓ / not found
+• docker-socket: mounted / not mounted
 
 *System:*
 • Group memory: yes/no

@@ -18,6 +18,55 @@ export interface TelegramChannelOpts {
   registeredGroups: () => Record<string, RegisteredGroup>;
 }
 
+interface TelegramCommandContext {
+  chat?: { id: number };
+  reply: (text: string, options?: Record<string, unknown>) => Promise<unknown>;
+}
+
+function getRegisteredGroup(
+  opts: TelegramChannelOpts,
+  chatId: number,
+): RegisteredGroup | undefined {
+  return opts.registeredGroups()[`tg:${chatId}`];
+}
+
+function isMainTelegramChat(
+  opts: TelegramChannelOpts,
+  chatId: number,
+): boolean {
+  return Boolean(getRegisteredGroup(opts, chatId)?.isMain);
+}
+
+async function requireMainChat(
+  opts: TelegramChannelOpts,
+  ctx: TelegramCommandContext,
+): Promise<boolean> {
+  const chatId = ctx.chat?.id;
+  if (!chatId || !isMainTelegramChat(opts, chatId)) {
+    await ctx.reply('This command is only available in the main admin chat.');
+    return false;
+  }
+  return true;
+}
+
+function formatProcessUptime(): string {
+  const totalSeconds = Math.floor(process.uptime());
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${hours}h ${minutes}m ${seconds}s`;
+}
+
+async function registerBotCommands(bot: Bot): Promise<void> {
+  await bot.api.setMyCommands([
+    { command: 'help', description: 'Show available Pepper commands' },
+    { command: 'ping', description: 'Check that Pepper is online' },
+    { command: 'status', description: 'Show NanoClaw service status' },
+    { command: 'restart', description: 'Restart the NanoClaw service' },
+    { command: 'chatid', description: 'Show this chat registration ID' },
+  ]);
+}
+
 async function sendTelegramMessage(
   api: { sendMessage: Api['sendMessage'] },
   chatId: string | number,
@@ -54,6 +103,16 @@ export class TelegramChannel implements Channel {
       },
     });
 
+    this.bot.command('help', async (ctx) => {
+      const lines = [
+        `/${'ping'} - confirm ${ASSISTANT_NAME} is online`,
+        '/chatid - show this chat registration ID',
+        '/status - show NanoClaw process status',
+        '/restart - restart NanoClaw',
+      ];
+      await ctx.reply(lines.join('\n'));
+    });
+
     this.bot.command('chatid', (ctx) => {
       const chatId = ctx.chat.id;
       const chatType = ctx.chat.type;
@@ -72,7 +131,35 @@ export class TelegramChannel implements Channel {
       ctx.reply(`${ASSISTANT_NAME} is online.`);
     });
 
-    const TELEGRAM_BOT_COMMANDS = new Set(['chatid', 'ping']);
+    this.bot.command('status', async (ctx) => {
+      if (!(await requireMainChat(this.opts, ctx))) return;
+
+      const group = getRegisteredGroup(this.opts, ctx.chat.id);
+      const statusLines = [
+        '*NanoClaw Status*',
+        `Assistant: ${ASSISTANT_NAME}`,
+        `PID: \`${process.pid}\``,
+        `Uptime: \`${formatProcessUptime()}\``,
+        `Chat: \`${group?.folder || `tg:${ctx.chat.id}`}\``,
+      ];
+      await ctx.reply(statusLines.join('\n'), { parse_mode: 'Markdown' });
+    });
+
+    this.bot.command('restart', async (ctx) => {
+      if (!(await requireMainChat(this.opts, ctx))) return;
+
+      logger.warn({ chatId: ctx.chat.id }, 'Telegram requested NanoClaw restart');
+      await ctx.reply('Restarting NanoClaw now.');
+      setTimeout(() => process.exit(0), 250);
+    });
+
+    const TELEGRAM_BOT_COMMANDS = new Set([
+      'chatid',
+      'help',
+      'ping',
+      'restart',
+      'status',
+    ]);
 
     this.bot.on('message:text', async (ctx) => {
       if (ctx.message.text.startsWith('/')) {
@@ -215,7 +302,12 @@ export class TelegramChannel implements Channel {
 
     return new Promise<void>((resolve) => {
       this.bot!.start({
-        onStart: (botInfo) => {
+        onStart: async (botInfo) => {
+          try {
+            await registerBotCommands(this.bot!);
+          } catch (err) {
+            logger.warn({ err }, 'Failed to register Telegram bot commands');
+          }
           logger.info(
             { username: botInfo.username, id: botInfo.id },
             'Telegram bot connected',

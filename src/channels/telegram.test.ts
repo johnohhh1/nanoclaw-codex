@@ -26,6 +26,7 @@ vi.mock('grammy', () => ({
     api = {
       sendMessage: vi.fn().mockResolvedValue(undefined),
       sendChatAction: vi.fn().mockResolvedValue(undefined),
+      setMyCommands: vi.fn().mockResolvedValue(undefined),
     };
 
     constructor() {
@@ -66,6 +67,7 @@ function createOpts() {
         folder: 'test-group',
         trigger: '@Andy',
         added_at: '2024-01-01T00:00:00.000Z',
+        isMain: true,
       },
     })),
   };
@@ -89,8 +91,12 @@ describe('TelegramChannel', () => {
     await channel.connect();
 
     expect(channel.isConnected()).toBe(true);
+    expect(currentBot().commandHandlers.has('help')).toBe(true);
     expect(currentBot().commandHandlers.has('chatid')).toBe(true);
+    expect(currentBot().commandHandlers.has('status')).toBe(true);
+    expect(currentBot().commandHandlers.has('restart')).toBe(true);
     expect(currentBot().filterHandlers.has('message:text')).toBe(true);
+    expect(currentBot().api.setMyCommands).toHaveBeenCalled();
   });
 
   it('stores a registered group text message', async () => {
@@ -129,5 +135,55 @@ describe('TelegramChannel', () => {
         sender_name: 'Alice',
       }),
     );
+  });
+
+  it('restarts only from the main Telegram chat', async () => {
+    const exitSpy = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((() => undefined) as never);
+    const timeoutSpy = vi
+      .spyOn(global, 'setTimeout')
+      .mockImplementation(((fn: (...args: any[]) => void) => {
+        fn();
+        return 0 as any;
+      }) as typeof setTimeout);
+
+    const channel = new TelegramChannel('token', createOpts());
+    await channel.connect();
+
+    const restart = currentBot().commandHandlers.get('restart');
+    const reply = vi.fn().mockResolvedValue(undefined);
+    await restart({
+      chat: { id: 100200300, type: 'group' },
+      reply,
+    });
+
+    expect(reply).toHaveBeenCalledWith('Restarting NanoClaw now.');
+    expect(exitSpy).toHaveBeenCalledWith(0);
+
+    timeoutSpy.mockRestore();
+    exitSpy.mockRestore();
+  });
+
+  it('rejects restart from a non-main chat', async () => {
+    const exitSpy = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((() => undefined) as never);
+    const channel = new TelegramChannel('token', createOpts());
+    await channel.connect();
+
+    const restart = currentBot().commandHandlers.get('restart');
+    const reply = vi.fn().mockResolvedValue(undefined);
+    await restart({
+      chat: { id: 777, type: 'private' },
+      reply,
+    });
+
+    expect(reply).toHaveBeenCalledWith(
+      'This command is only available in the main admin chat.',
+    );
+    expect(exitSpy).not.toHaveBeenCalled();
+
+    exitSpy.mockRestore();
   });
 });

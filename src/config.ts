@@ -44,6 +44,10 @@ export const SKILLS_DIR = path.resolve(PROJECT_ROOT, 'skills');
 
 export const CONTAINER_IMAGE =
   process.env.CONTAINER_IMAGE || 'nanoclaw-agent:latest';
+export const CONTAINER_DOCKER_SOCKET_PATH =
+  process.env.CONTAINER_DOCKER_SOCKET_PATH || '/var/run/docker.sock';
+export const CONTAINER_MOUNT_DOCKER_SOCKET =
+  (process.env.CONTAINER_MOUNT_DOCKER_SOCKET || 'false') === 'true';
 export const CONTAINER_TIMEOUT = parseInt(
   process.env.CONTAINER_TIMEOUT || '1800000',
   10,

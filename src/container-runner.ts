@@ -10,6 +10,8 @@ import path from 'path';
 import {
   CONTAINER_IMAGE,
   CONTAINER_MAX_OUTPUT_SIZE,
+  CONTAINER_MOUNT_DOCKER_SOCKET,
+  CONTAINER_DOCKER_SOCKET_PATH,
   CONTAINER_TIMEOUT,
   DATA_DIR,
   GROUPS_DIR,
@@ -78,10 +80,7 @@ function migrateLegacyCodexLayout(groupSessionsDir: string): void {
 }
 
 function seedGroupCodexAuth(groupSessionsDir: string): void {
-  const hostCodexDir = path.join(
-    os.homedir(),
-    '.codex',
-  );
+  const hostCodexDir = path.join(os.homedir(), '.codex');
   const hostAuthFile = path.join(hostCodexDir, 'auth.json');
   const groupAuthFile = path.join(groupSessionsDir, 'auth.json');
 
@@ -100,7 +99,10 @@ function seedGroupCodexAuth(groupSessionsDir: string): void {
   }
 
   fs.copyFileSync(hostAuthFile, groupAuthFile);
-  logger.info({ groupState: groupSessionsDir }, 'Seeded group Codex auth from host session');
+  logger.info(
+    { groupState: groupSessionsDir },
+    'Seeded group Codex auth from host session',
+  );
 }
 
 function buildVolumeMounts(
@@ -113,15 +115,11 @@ function buildVolumeMounts(
   const skillsDir = path.join(projectRoot, 'skills');
 
   if (isMain) {
-    // Main gets the project root read-only. Writable paths the agent needs
-    // (group folder, IPC, agent state) are mounted separately below.
-    // Read-only prevents the agent from modifying host application code
-    // (src/, dist/, package.json, etc.) which would bypass the sandbox
-    // entirely on next restart.
+    // Main gets direct read-write access to the real project root.
     mounts.push({
       hostPath: projectRoot,
       containerPath: '/workspace/project',
-      readonly: true,
+      readonly: false,
     });
 
     // Shadow .env so the agent cannot read secrets from the mounted project root.
@@ -198,38 +196,34 @@ function buildVolumeMounts(
     readonly: false,
   });
 
-  // Copy agent-runner source into a per-group writable location so agents
-  // can customize it (add tools, change behavior) without affecting other
-  // groups. Recompiled on container startup via entrypoint.sh.
   const agentRunnerSrc = path.join(
     projectRoot,
     'container',
     'agent-runner',
     'src',
   );
-  const groupAgentRunnerDir = path.join(
-    DATA_DIR,
-    'sessions',
-    group.folder,
-    'agent-runner-src',
-  );
   if (fs.existsSync(agentRunnerSrc)) {
-    const srcIndex = path.join(agentRunnerSrc, 'index.ts');
-    const cachedIndex = path.join(groupAgentRunnerDir, 'index.ts');
-    const needsCopy =
-      !fs.existsSync(groupAgentRunnerDir) ||
-      !fs.existsSync(cachedIndex) ||
-      (fs.existsSync(srcIndex) &&
-        fs.statSync(srcIndex).mtimeMs > fs.statSync(cachedIndex).mtimeMs);
-    if (needsCopy) {
-      fs.cpSync(agentRunnerSrc, groupAgentRunnerDir, { recursive: true });
+    mounts.push({
+      hostPath: agentRunnerSrc,
+      containerPath: '/app/src',
+      readonly: false,
+    });
+  }
+
+  if (isMain && CONTAINER_MOUNT_DOCKER_SOCKET) {
+    if (fs.existsSync(CONTAINER_DOCKER_SOCKET_PATH)) {
+      mounts.push({
+        hostPath: CONTAINER_DOCKER_SOCKET_PATH,
+        containerPath: '/var/run/docker.sock',
+        readonly: false,
+      });
+    } else {
+      logger.warn(
+        { dockerSocketPath: CONTAINER_DOCKER_SOCKET_PATH },
+        'Docker socket mount requested but socket path does not exist',
+      );
     }
   }
-  mounts.push({
-    hostPath: groupAgentRunnerDir,
-    containerPath: '/app/src',
-    readonly: false,
-  });
 
   // Additional mounts validated against external allowlist (tamper-proof from containers)
   if (group.containerConfig?.additionalMounts) {
@@ -280,6 +274,18 @@ async function buildContainerArgs(
   if (hostUid != null && hostUid !== 0 && hostUid !== 1000) {
     args.push('--user', `${hostUid}:${hostGid}`);
     args.push('-e', 'HOME=/home/node');
+  }
+
+  if (CONTAINER_MOUNT_DOCKER_SOCKET && fs.existsSync(CONTAINER_DOCKER_SOCKET_PATH)) {
+    try {
+      const dockerSocketStats = fs.statSync(CONTAINER_DOCKER_SOCKET_PATH);
+      args.push('--group-add', `${dockerSocketStats.gid}`);
+    } catch (err) {
+      logger.warn(
+        { err, dockerSocketPath: CONTAINER_DOCKER_SOCKET_PATH },
+        'Failed to read Docker socket metadata for group access',
+      );
+    }
   }
 
   for (const mount of mounts) {

@@ -61,6 +61,28 @@ Currently shipped channel adapters:
 
 Slack, Discord, Gmail, and similar integrations are not currently implemented in this branch.
 
+## Main Container Behavior
+
+For the main/admin group, the live container now:
+- mounts the real repo at `/workspace/project` as read-write
+- bind-mounts `container/agent-runner/src` directly into `/app/src`
+- can mount `/var/run/docker.sock` for runtime control
+- includes the Docker CLI in the agent image when the container is rebuilt
+
+The in-container runner is now patched in real project source, not just a session copy. That means fixes to `container/agent-runner/src/*` survive image rebuilds and redeploys.
+
+If you want Docker control from inside the main agent container, the host service needs:
+
+```ini
+CONTAINER_MOUNT_DOCKER_SOCKET=true
+CONTAINER_DOCKER_SOCKET_PATH=/var/run/docker.sock
+```
+
+With those set and the image rebuilt, the main live sandbox has:
+- `docker` available in `PATH`
+- `/var/run/docker.sock` mounted
+- access to the socket group for non-root operation
+
 ## Memory Model
 
 The current instruction contract is:

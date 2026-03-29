@@ -143,7 +143,10 @@ export function emitRuntimeEvent(input: {
     run.events.splice(0, run.events.length - MAX_EVENTS_PER_RUN);
   }
 
-  if (input.data?.containerName && typeof input.data.containerName === 'string') {
+  if (
+    input.data?.containerName &&
+    typeof input.data.containerName === 'string'
+  ) {
     run.container_name = input.data.containerName;
   }
   if (
@@ -319,21 +322,23 @@ export function getOperatorRun(traceId: string): ActiveRun | null {
       typeof lastEvent?.data?.sessionId === 'string'
         ? lastEvent.data.sessionId
         : undefined,
-    changed_files:
-      Array.isArray(lastEvent?.data?.changed_files)
-        ? lastEvent.data.changed_files.filter(
-            (entry): entry is string => typeof entry === 'string',
-          )
-        : undefined,
+    changed_files: Array.isArray(lastEvent?.data?.changed_files)
+      ? lastEvent.data.changed_files.filter(
+          (entry): entry is string => typeof entry === 'string',
+        )
+      : undefined,
     diff:
-      typeof lastEvent?.data?.diff === 'string' ? lastEvent.data.diff : undefined,
-    artifacts:
-      Array.isArray(lastEvent?.data?.artifacts)
-        ? lastEvent.data.artifacts.filter(
-            (entry): entry is string => typeof entry === 'string',
-          )
+      typeof lastEvent?.data?.diff === 'string'
+        ? lastEvent.data.diff
         : undefined,
-    last_event_summary: String(lastEvent?.summary || 'Recovered from trace log'),
+    artifacts: Array.isArray(lastEvent?.data?.artifacts)
+      ? lastEvent.data.artifacts.filter(
+          (entry): entry is string => typeof entry === 'string',
+        )
+      : undefined,
+    last_event_summary: String(
+      lastEvent?.summary || 'Recovered from trace log',
+    ),
     events,
   };
 }

@@ -53,7 +53,10 @@ function listBuiltInContainerSkills(): string[] {
   }
 }
 
-function readCommandVersion(command: string, args: string[] = ['--version']): string {
+function readCommandVersion(
+  command: string,
+  args: string[] = ['--version'],
+): string {
   try {
     return execFileSync(command, args, {
       cwd: process.cwd(),
@@ -197,13 +200,19 @@ export function formatRuntimeReport(
   lines.push(`Port: \`${webUi.port || 'disabled'}\``);
   lines.push(`Stable group JID: \`${webUi.groupJid}\``);
   lines.push(`Stable group folder: \`${WEB_UI_FOLDER}\``);
-  lines.push(`Ops page: ${webUi.port ? `http://localhost:${webUi.port}/ops` : 'disabled'}`);
+  lines.push(
+    `Ops page: ${webUi.port ? `http://localhost:${webUi.port}/ops` : 'disabled'}`,
+  );
   lines.push('');
   lines.push('*Container*');
   lines.push(`Image: \`${CONTAINER_IMAGE}\``);
-  lines.push(`Docker socket mount: \`${dockerSocketMount === 'true' ? 'enabled' : 'disabled'}\``);
+  lines.push(
+    `Docker socket mount: \`${dockerSocketMount === 'true' ? 'enabled' : 'disabled'}\``,
+  );
   lines.push(`Docker socket path: \`${dockerSocketPath}\``);
-  lines.push(`Socket present on host: \`${fs.existsSync(dockerSocketPath) ? 'yes' : 'no'}\``);
+  lines.push(
+    `Socket present on host: \`${fs.existsSync(dockerSocketPath) ? 'yes' : 'no'}\``,
+  );
   lines.push(`Project path: \`${process.cwd()}\``);
   lines.push('');
   lines.push('*Tool Versions*');
@@ -216,7 +225,9 @@ export function formatRuntimeReport(
   lines.push('*State*');
   lines.push(`Registered groups: \`${opts.registeredGroupsCount}\``);
   lines.push(`Active sessions: \`${opts.sessionsCount}\``);
-  lines.push('Use `/status`, `/capabilities`, and `/runtime` together for current truth.');
+  lines.push(
+    'Use `/status`, `/capabilities`, and `/runtime` together for current truth.',
+  );
 
   return lines.join('\n');
 }

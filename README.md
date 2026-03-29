@@ -125,7 +125,7 @@ NanoClaw can expose a local browser chat channel using `nanoclaw-web-ui`.
 Configure it in `.env`:
 
 ```ini
-WEB_UI_PORT=3000
+WEB_UI_PORT=24873
 WEB_UI_HOST=0.0.0.0
 WEB_UI_AUTH_TOKEN=
 WEB_UI_GROUP_JID=web:web_ui
@@ -136,6 +136,7 @@ Behavior:
 - the Web UI channel is only loaded when `WEB_UI_PORT` is set
 - it serves a local chat UI on `http://localhost:<WEB_UI_PORT>`
 - it also exposes a dedicated operator console at `http://localhost:<WEB_UI_PORT>/ops`
+- `setup.sh` now prompts you to choose a custom high port instead of nudging you toward a standard default
 - it binds to `WEB_UI_HOST` and defaults to `0.0.0.0` so agent containers can reach it via `host.docker.internal`
 - `WEB_UI_AUTH_TOKEN` is optional; when set, the browser must provide it to connect
 - it registers one stable admin group by default: `web:web_ui`

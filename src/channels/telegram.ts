@@ -161,8 +161,11 @@ export class TelegramChannel implements Channel {
       if (!group) return;
       await ctx.reply(
         formatRuntimeReport(group, {
-          connectedChannels: this.opts.connectedChannelNames?.() || ['telegram'],
-          registeredGroupsCount: Object.keys(this.opts.registeredGroups()).length,
+          connectedChannels: this.opts.connectedChannelNames?.() || [
+            'telegram',
+          ],
+          registeredGroupsCount: Object.keys(this.opts.registeredGroups())
+            .length,
           sessionsCount: this.opts.sessionCount?.() || 0,
         }),
         { parse_mode: 'Markdown' },

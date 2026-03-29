@@ -49,6 +49,21 @@ upsert_env() {
   fi
 }
 
+suggest_web_ui_port() {
+  local port
+  while true; do
+    port="$(( 20000 + RANDOM % 20000 ))"
+    if ! command -v ss >/dev/null 2>&1; then
+      printf '%s' "$port"
+      return
+    fi
+    if ! ss -ltn "( sport = :${port} )" 2>/dev/null | tail -n +2 | grep -q .; then
+      printf '%s' "$port"
+      return
+    fi
+  done
+}
+
 choose_runtime() {
   if command -v docker >/dev/null 2>&1; then
     if docker info >/dev/null 2>&1; then
@@ -155,7 +170,9 @@ else
 fi
 
 if confirm "Enable the local Web UI too?" "n"; then
-  web_ui_port="$(ask "Web UI port" "3000")"
+  suggested_web_ui_port="$(suggest_web_ui_port)"
+  printf '\nPick a non-standard local Web UI port. Avoid the obvious default ports.\n'
+  web_ui_port="$(ask "Web UI port" "$suggested_web_ui_port")"
   web_ui_host="$(ask "Web UI host" "0.0.0.0")"
   web_ui_auth_token="$(ask "Web UI auth token (leave blank for none)" "")"
   web_ui_group_jid="$(ask "Web UI stable group JID" "web:web_ui")"

@@ -71,11 +71,7 @@ import {
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
-import {
-  createTraceRun,
-  emitRuntimeEvent,
-  finishTraceRun,
-} from './traces.js';
+import { createTraceRun, emitRuntimeEvent, finishTraceRun } from './traces.js';
 import {
   formatCapabilitiesReport,
   formatMainOnlyMessage,
@@ -170,7 +166,6 @@ function saveState(): void {
   setRouterState('last_agent_timestamp', JSON.stringify(lastAgentTimestamp));
 }
 
-
 function registerGroup(jid: string, group: RegisteredGroup): void {
   let groupDir: string;
   try {
@@ -259,27 +254,19 @@ function collectGroupArtifacts(
 
 function captureRepoDiffSnapshot(): { changedFiles: string[]; diff: string } {
   try {
-    const changedFiles = execFileSync(
-      'git',
-      ['diff', '--name-only'],
-      {
-        cwd: process.cwd(),
-        encoding: 'utf-8',
-      },
-    )
+    const changedFiles = execFileSync('git', ['diff', '--name-only'], {
+      cwd: process.cwd(),
+      encoding: 'utf-8',
+    })
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean);
 
-    const diff = execFileSync(
-      'git',
-      ['diff', '--no-color', '--', '.'],
-      {
-        cwd: process.cwd(),
-        encoding: 'utf-8',
-        maxBuffer: 8 * 1024 * 1024,
-      },
-    ).slice(0, 200_000);
+    const diff = execFileSync('git', ['diff', '--no-color', '--', '.'], {
+      cwd: process.cwd(),
+      encoding: 'utf-8',
+      maxBuffer: 8 * 1024 * 1024,
+    }).slice(0, 200_000);
 
     return { changedFiles, diff };
   } catch (err) {
@@ -442,50 +429,50 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     chatJid,
     traceRun.trace_id,
     async (result) => {
-    // Streaming output callback — called for each agent result
-    if (result.result) {
-      const raw =
-        typeof result.result === 'string'
-          ? result.result
-          : JSON.stringify(result.result);
-      // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
-      const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
-      logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
-      emitRuntimeEvent({
-        traceId: traceRun.trace_id,
-        type: 'assistant_output',
-        phase: 'execution',
-        summary: `Assistant produced ${raw.length} characters`,
-        data: {
-          rawLength: raw.length,
-          sessionId: result.newSessionId || sessions[group.folder] || null,
-        },
-      });
-      if (text) {
-        await channel.sendMessage(chatJid, text);
-        outputSentToUser = true;
+      // Streaming output callback — called for each agent result
+      if (result.result) {
+        const raw =
+          typeof result.result === 'string'
+            ? result.result
+            : JSON.stringify(result.result);
+        // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
+        const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+        logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
         emitRuntimeEvent({
           traceId: traceRun.trace_id,
-          type: 'message_sent',
-          phase: 'delivery',
-          summary: 'Sent assistant output to channel',
+          type: 'assistant_output',
+          phase: 'execution',
+          summary: `Assistant produced ${raw.length} characters`,
           data: {
-            textLength: text.length,
-            channel: channel.name,
+            rawLength: raw.length,
+            sessionId: result.newSessionId || sessions[group.folder] || null,
           },
         });
+        if (text) {
+          await channel.sendMessage(chatJid, text);
+          outputSentToUser = true;
+          emitRuntimeEvent({
+            traceId: traceRun.trace_id,
+            type: 'message_sent',
+            phase: 'delivery',
+            summary: 'Sent assistant output to channel',
+            data: {
+              textLength: text.length,
+              channel: channel.name,
+            },
+          });
+        }
+        // Only reset idle timer on actual results, not session-update markers (result: null)
+        resetIdleTimer();
       }
-      // Only reset idle timer on actual results, not session-update markers (result: null)
-      resetIdleTimer();
-    }
 
-    if (result.status === 'success') {
-      queue.notifyIdle(chatJid);
-    }
+      if (result.status === 'success') {
+        queue.notifyIdle(chatJid);
+      }
 
-    if (result.status === 'error') {
-      hadError = true;
-    }
+      if (result.status === 'error') {
+        hadError = true;
+      }
     },
   );
 
@@ -616,7 +603,9 @@ async function runAgent(
       (event) => {
         emitRuntimeEvent({
           traceId,
-          type: (event.type as Parameters<typeof emitRuntimeEvent>[0]['type']) || 'agent_waiting',
+          type:
+            (event.type as Parameters<typeof emitRuntimeEvent>[0]['type']) ||
+            'agent_waiting',
           phase: event.phase || 'execution',
           summary: event.summary || event.type,
           data: event.data,
@@ -947,7 +936,10 @@ async function main(): Promise<void> {
     if (!channel) return;
     await channel.sendMessage(
       chatJid,
-      formatStatusReport(group, channels.map((ch) => ch.name)),
+      formatStatusReport(
+        group,
+        channels.map((ch) => ch.name),
+      ),
     );
   }
 
@@ -1063,7 +1055,10 @@ async function main(): Promise<void> {
       registerGroup(chatJid, group);
       return registeredGroups[chatJid];
     },
-    cleanupRegisteredChatsByPrefix: (prefix: string, keepJids: string[] = []) => {
+    cleanupRegisteredChatsByPrefix: (
+      prefix: string,
+      keepJids: string[] = [],
+    ) => {
       let removed = 0;
       for (const jid of Object.keys(registeredGroups)) {
         if (!jid.startsWith(prefix) || keepJids.includes(jid)) continue;

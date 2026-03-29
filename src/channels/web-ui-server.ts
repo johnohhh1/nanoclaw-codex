@@ -27,6 +27,9 @@ export interface WebServerOptions {
   staticPath?: string;
   onMessage?: (message: WebMessage) => void | Promise<void>;
   onAuthenticate?: (sessionId: string) => boolean;
+  getRuntimeSnapshot?: () => unknown;
+  getTraceDetail?: (traceId: string) => unknown;
+  getStableChatJid?: () => string;
 }
 
 interface WebSession {
@@ -34,6 +37,7 @@ interface WebSession {
   sessionId: string;
   isAuthenticated: boolean;
   lastActivity: Date;
+  chatJid?: string;
 }
 
 interface ServerConfig {
@@ -61,6 +65,9 @@ export default class WebUIServer {
   private config: ServerConfig;
   private onMessageCallback?: WebServerOptions['onMessage'];
   private onAuthenticateCallback?: WebServerOptions['onAuthenticate'];
+  private getRuntimeSnapshotCallback?: WebServerOptions['getRuntimeSnapshot'];
+  private getTraceDetailCallback?: WebServerOptions['getTraceDetail'];
+  private getStableChatJidCallback?: WebServerOptions['getStableChatJid'];
 
   constructor(options: WebServerOptions = {}) {
     this.config = {
@@ -72,9 +79,16 @@ export default class WebUIServer {
     };
     this.onMessageCallback = options.onMessage;
     this.onAuthenticateCallback = options.onAuthenticate;
+    this.getRuntimeSnapshotCallback = options.getRuntimeSnapshot;
+    this.getTraceDetailCallback = options.getTraceDetail;
+    this.getStableChatJidCallback = options.getStableChatJid;
 
     this.app.use(express.json());
     this.app.use(express.static(this.config.STATIC_PATH));
+
+    this.app.get('/ops', (_req, res) => {
+      res.sendFile(path.join(this.config.STATIC_PATH, 'ops.html'));
+    });
 
     this.app.get('/api/health', (_req, res) => {
       res.json({
@@ -82,6 +96,24 @@ export default class WebUIServer {
         assistant: this.config.ASSISTANT_NAME,
         timestamp: new Date().toISOString(),
       });
+    });
+
+    this.app.get('/api/runtime/runs', (_req, res) => {
+      res.json(
+        this.getRuntimeSnapshotCallback?.() || {
+          active: [],
+          recent: [],
+        },
+      );
+    });
+
+    this.app.get('/api/runtime/traces/:traceId', (req, res) => {
+      const detail = this.getTraceDetailCallback?.(req.params.traceId);
+      if (!detail) {
+        res.status(404).json({ error: 'Trace not found' });
+        return;
+      }
+      res.json(detail);
     });
 
     this.wss = new WebSocketServer({ server: this.server, path: '/ws' });
@@ -168,6 +200,7 @@ export default class WebUIServer {
           success: true,
           sessionId,
           assistantName: this.config.ASSISTANT_NAME,
+          chatJid: this.getStableChatJidCallback?.() || `web:${sessionId}`,
         });
         logger.info({ sessionId }, 'Web session authenticated');
         return;
@@ -182,10 +215,11 @@ export default class WebUIServer {
         const content =
           typeof payload.content === 'string' ? payload.content.trim() : '';
         const chatJid =
-          typeof payload.chatJid === 'string' &&
+          this.getStableChatJidCallback?.() ||
+          (typeof payload.chatJid === 'string' &&
           payload.chatJid.startsWith('web:')
             ? payload.chatJid
-            : `web:${sessionId}`;
+            : `web:${sessionId}`);
         const messageId =
           typeof payload.id === 'string' && payload.id
             ? payload.id
@@ -197,6 +231,7 @@ export default class WebUIServer {
         }
 
         session.lastActivity = new Date();
+        session.chatJid = chatJid;
 
         if (this.onMessageCallback) {
           try {
@@ -242,6 +277,25 @@ export default class WebUIServer {
     }
     this.sendToWs(session.ws, data);
     return true;
+  }
+
+  sendToChat(chatJid: string, data: unknown): number {
+    let delivered = 0;
+    for (const session of this.sessions.values()) {
+      if (!session.isAuthenticated) continue;
+      if (session.chatJid !== chatJid) continue;
+      if (session.ws.readyState !== WebSocket.OPEN) continue;
+      this.sendToWs(session.ws, data);
+      delivered += 1;
+    }
+    return delivered;
+  }
+
+  broadcast(data: unknown): void {
+    for (const session of this.sessions.values()) {
+      if (!session.isAuthenticated) continue;
+      this.sendToWs(session.ws, data);
+    }
   }
 
   getSessions(): Array<{ sessionId: string; lastActivity: Date }> {

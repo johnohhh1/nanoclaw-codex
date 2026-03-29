@@ -626,6 +626,27 @@ export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
   );
 }
 
+export function deleteRegisteredGroupsByPrefix(
+  prefix: string,
+  keepJids: string[] = [],
+): number {
+  const rows = db
+    .prepare(`SELECT jid FROM registered_groups WHERE jid LIKE ?`)
+    .all(`${prefix}%`) as Array<{ jid: string }>;
+  const toDelete = rows
+    .map((row) => row.jid)
+    .filter((jid) => !keepJids.includes(jid));
+
+  if (toDelete.length === 0) return 0;
+
+  const stmt = db.prepare(`DELETE FROM registered_groups WHERE jid = ?`);
+  const tx = db.transaction((jids: string[]) => {
+    for (const jid of jids) stmt.run(jid);
+  });
+  tx(toDelete);
+  return toDelete.length;
+}
+
 export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
   const rows = db.prepare('SELECT * FROM registered_groups').all() as Array<{
     jid: string;

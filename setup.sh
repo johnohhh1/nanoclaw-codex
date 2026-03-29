@@ -134,6 +134,7 @@ esac
 
 assistant_name="$(ask "Assistant name" "Andy")"
 trigger="$(ask "Trigger word" "@${assistant_name}")"
+upsert_env "ASSISTANT_NAME" "$assistant_name"
 
 step "Configuring channel"
 if [[ "$channel" == "telegram" ]]; then
@@ -151,6 +152,20 @@ else
   printf '  npx tsx setup/index.ts --step groups --list\n\n'
   jid="$(ask "WhatsApp chat JID (example: 120363...@g.us or 1555...@s.whatsapp.net)")"
   [[ "$jid" == *@g.us || "$jid" == *@s.whatsapp.net ]] || fail "Invalid WhatsApp JID format."
+fi
+
+if confirm "Enable the local Web UI too?" "n"; then
+  web_ui_port="$(ask "Web UI port" "3000")"
+  web_ui_host="$(ask "Web UI host" "0.0.0.0")"
+  web_ui_auth_token="$(ask "Web UI auth token (leave blank for none)" "")"
+  web_ui_group_jid="$(ask "Web UI stable group JID" "web:web_ui")"
+  web_ui_group_name="$(ask "Web UI group name" "Web UI")"
+
+  upsert_env "WEB_UI_PORT" "$web_ui_port"
+  upsert_env "WEB_UI_HOST" "$web_ui_host"
+  upsert_env "WEB_UI_AUTH_TOKEN" "$web_ui_auth_token"
+  upsert_env "WEB_UI_GROUP_JID" "$web_ui_group_jid"
+  upsert_env "WEB_UI_GROUP_NAME" "$web_ui_group_name"
 fi
 
 group_name="$(ask "Display name for this chat/group")"

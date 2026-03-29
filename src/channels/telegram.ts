@@ -4,6 +4,11 @@ import { Api, Bot } from 'grammy';
 import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
 import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
+import {
+  formatCapabilitiesReport,
+  formatRuntimeReport,
+  formatStatusReport,
+} from '../reports.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import {
   Channel,
@@ -16,6 +21,8 @@ export interface TelegramChannelOpts {
   onMessage: OnInboundMessage;
   onChatMetadata: OnChatMetadata;
   registeredGroups: () => Record<string, RegisteredGroup>;
+  connectedChannelNames?: () => string[];
+  sessionCount?: () => number;
 }
 
 interface TelegramCommandContext {
@@ -49,19 +56,12 @@ async function requireMainChat(
   return true;
 }
 
-function formatProcessUptime(): string {
-  const totalSeconds = Math.floor(process.uptime());
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  return `${hours}h ${minutes}m ${seconds}s`;
-}
-
 async function registerBotCommands(bot: Bot): Promise<void> {
   await bot.api.setMyCommands([
     { command: 'help', description: 'Show available Pepper commands' },
     { command: 'ping', description: 'Check that Pepper is online' },
     { command: 'status', description: 'Show NanoClaw service status' },
+    { command: 'runtime', description: 'Show effective runtime config' },
     { command: 'capabilities', description: 'Show Pepper capabilities' },
     { command: 'restart', description: 'Restart the NanoClaw service' },
     { command: 'chatid', description: 'Show this chat registration ID' },
@@ -109,6 +109,7 @@ export class TelegramChannel implements Channel {
         `/${'ping'} - confirm ${ASSISTANT_NAME} is online`,
         '/chatid - show this chat registration ID',
         '/status - show NanoClaw process status',
+        '/runtime - show effective runtime config',
         '/capabilities - show Pepper capabilities',
         '/restart - restart NanoClaw',
       ];
@@ -137,29 +138,35 @@ export class TelegramChannel implements Channel {
       if (!(await requireMainChat(this.opts, ctx))) return;
 
       const group = getRegisteredGroup(this.opts, ctx.chat.id);
-      const statusLines = [
-        '*NanoClaw Status*',
-        `Assistant: ${ASSISTANT_NAME}`,
-        `PID: \`${process.pid}\``,
-        `Uptime: \`${formatProcessUptime()}\``,
-        `Chat: \`${group?.folder || `tg:${ctx.chat.id}`}\``,
-      ];
-      await ctx.reply(statusLines.join('\n'), { parse_mode: 'Markdown' });
+      if (!group) return;
+      await ctx.reply(formatStatusReport(group, ['telegram']), {
+        parse_mode: 'Markdown',
+      });
     });
 
     this.bot.command('capabilities', async (ctx) => {
       if (!(await requireMainChat(this.opts, ctx))) return;
 
-      const lines = [
-        '*Pepper Capabilities*',
-        '• Browser automation with `agent-browser`',
-        '• Docker access in the main sandbox',
-        '• Immediate `send_message` progress updates',
-        '• Subagents and scheduled task controls',
-        '• Repo editing and local Web UI access',
-        '• Run `/skills` for installed repo skills',
-      ];
-      await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
+      const group = getRegisteredGroup(this.opts, ctx.chat.id);
+      if (!group) return;
+      await ctx.reply(formatCapabilitiesReport(group), {
+        parse_mode: 'Markdown',
+      });
+    });
+
+    this.bot.command('runtime', async (ctx) => {
+      if (!(await requireMainChat(this.opts, ctx))) return;
+
+      const group = getRegisteredGroup(this.opts, ctx.chat.id);
+      if (!group) return;
+      await ctx.reply(
+        formatRuntimeReport(group, {
+          connectedChannels: this.opts.connectedChannelNames?.() || ['telegram'],
+          registeredGroupsCount: Object.keys(this.opts.registeredGroups()).length,
+          sessionsCount: this.opts.sessionCount?.() || 0,
+        }),
+        { parse_mode: 'Markdown' },
+      );
     });
 
     this.bot.command('restart', async (ctx) => {
@@ -179,6 +186,7 @@ export class TelegramChannel implements Channel {
       'help',
       'ping',
       'restart',
+      'runtime',
       'status',
     ]);
 

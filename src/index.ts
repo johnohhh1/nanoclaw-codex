@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { execFileSync } from 'child_process';
 
 import { OneCLI } from '@onecli-sh/sdk';
 
@@ -14,7 +15,6 @@ import {
   TIMEZONE,
 } from './config.js';
 import { loadConfiguredChannels } from './channels/index.js';
-import { readEnvFile } from './env.js';
 import {
   getChannelFactory,
   getRegisteredChannelNames,
@@ -34,6 +34,7 @@ import {
   getAllRegisteredGroups,
   getAllSessions,
   getAllTasks,
+  deleteRegisteredGroupsByPrefix,
   getGroupSkills,
   getMessagesSince,
   getNewMessages,
@@ -63,7 +64,6 @@ import {
 import {
   addSkillToGroup,
   createSkill,
-  discoverSkills,
   formatSkillsReport,
   getSkillByName,
   removeSkillFromGroup,
@@ -71,6 +71,17 @@ import {
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
+import {
+  createTraceRun,
+  emitRuntimeEvent,
+  finishTraceRun,
+} from './traces.js';
+import {
+  formatCapabilitiesReport,
+  formatMainOnlyMessage,
+  formatRuntimeReport,
+  formatStatusReport,
+} from './reports.js';
 
 // Re-export for backwards compatibility during refactor
 export { escapeXml, formatMessages } from './router.js';
@@ -159,75 +170,6 @@ function saveState(): void {
   setRouterState('last_agent_timestamp', JSON.stringify(lastAgentTimestamp));
 }
 
-function formatMainOnlyMessage(command: string): string {
-  return `${command} is available in the main admin chat only.`;
-}
-
-function formatCapabilitiesReport(group: RegisteredGroup): string {
-  const envVars = readEnvFile(['WEB_UI_PORT']);
-  const availableSkills = discoverSkills();
-  const installedSkills = getGroupSkills(group.folder);
-
-  const lines: string[] = [];
-  lines.push('*NanoClaw Capabilities*');
-  lines.push(`Assistant: ${ASSISTANT_NAME}`);
-  lines.push(`Group: ${group.folder}`);
-  lines.push(`Main channel: ${group.isMain ? 'yes' : 'no'}`);
-  lines.push('');
-  lines.push('*Messaging*');
-  lines.push('• Telegram channel');
-  lines.push('• WhatsApp channel');
-  const webUiPort = process.env.WEB_UI_PORT || envVars.WEB_UI_PORT;
-  if (webUiPort) {
-    lines.push(`• Web UI channel on http://localhost:${webUiPort}`);
-  }
-  lines.push('');
-  lines.push('*Operator Tools*');
-  lines.push('• agent-browser for live browser inspection and UI automation');
-  lines.push('• Docker CLI in the main sandbox');
-  lines.push('• Immediate progress replies via send_message');
-  lines.push('• Subagents via team_create / team_send_message / task_output');
-  lines.push('• Scheduled tasks via schedule_task / list_tasks / update_task');
-  lines.push('');
-  lines.push('*Installed Repo Skills*');
-  if (installedSkills.length === 0) {
-    lines.push('• none installed for this group');
-  } else {
-    for (const skillName of installedSkills) {
-      const skill = availableSkills.find((entry) => entry.name === skillName);
-      lines.push(`• ${skillName}${skill ? ` — ${skill.description}` : ''}`);
-    }
-  }
-  lines.push('');
-  lines.push(`Available repo skills: ${availableSkills.length}`);
-  lines.push('Use `/skills` to inspect and install more.');
-
-  return lines.join('\n');
-}
-
-function formatStatusReport(group: RegisteredGroup): string {
-  const envVars = readEnvFile(['WEB_UI_PORT', 'CONTAINER_MOUNT_DOCKER_SOCKET']);
-  const installedSkills = getGroupSkills(group.folder);
-  const lines: string[] = [];
-  lines.push('*NanoClaw Status*');
-  lines.push(`Assistant: ${ASSISTANT_NAME}`);
-  lines.push(`PID: \`${process.pid}\``);
-  lines.push(`Uptime: \`${formatProcessUptime()}\``);
-  lines.push(`Group: \`${group.folder}\``);
-  lines.push(`Main channel: ${group.isMain ? 'yes' : 'no'}`);
-  lines.push(`Installed skills: ${installedSkills.length}`);
-  const webUiPort = process.env.WEB_UI_PORT || envVars.WEB_UI_PORT;
-  lines.push(`Web UI: ${webUiPort ? `localhost:${webUiPort}` : 'disabled'}`);
-  const dockerSocketMount =
-    process.env.CONTAINER_MOUNT_DOCKER_SOCKET ||
-    envVars.CONTAINER_MOUNT_DOCKER_SOCKET;
-  lines.push(
-    `Docker socket mount: ${dockerSocketMount === 'true' ? 'enabled' : 'disabled'}`,
-  );
-  lines.push(`Connected channels: ${channels.map((ch) => ch.name).join(', ')}`);
-
-  return lines.join('\n');
-}
 
 function registerGroup(jid: string, group: RegisteredGroup): void {
   let groupDir: string;
@@ -248,6 +190,7 @@ function registerGroup(jid: string, group: RegisteredGroup): void {
   fs.mkdirSync(path.join(groupDir, 'logs'), { recursive: true });
 
   const groupMdFile = path.join(groupDir, 'AGENTS.md');
+  const memoriesFile = path.join(groupDir, 'MEMORIES.md');
   // Copy AGENTS.md template into the new group folder so agents have
   // identity and instructions from the first run.  (Fixes #1391)
   if (!fs.existsSync(groupMdFile)) {
@@ -266,6 +209,13 @@ function registerGroup(jid: string, group: RegisteredGroup): void {
       logger.info({ folder: group.folder }, 'Created AGENTS.md from template');
     }
   }
+  if (!fs.existsSync(memoriesFile)) {
+    fs.writeFileSync(
+      memoriesFile,
+      '# Durable Memories\n\nUse this file for medium-term facts that should survive thread rotation.\n',
+    );
+    logger.info({ folder: group.folder }, 'Created MEMORIES.md template');
+  }
 
   // Ensure a corresponding OneCLI agent exists (best-effort, non-blocking)
   ensureOneCLIAgent(jid, group);
@@ -276,12 +226,86 @@ function registerGroup(jid: string, group: RegisteredGroup): void {
   );
 }
 
-function formatProcessUptime(): string {
-  const totalSeconds = Math.floor(process.uptime());
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  return `${hours}h ${minutes}m ${seconds}s`;
+function collectGroupArtifacts(
+  groupFolder: string,
+  startedAt: string,
+  limit = 20,
+): string[] {
+  const groupDir = resolveGroupFolderPath(groupFolder);
+  const startedMs = new Date(startedAt).getTime();
+  const collected: string[] = [];
+
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (collected.length >= limit) return;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'logs') continue;
+        walk(fullPath);
+        continue;
+      }
+      const stat = fs.statSync(fullPath);
+      if (stat.mtimeMs < startedMs) continue;
+      collected.push(path.relative(process.cwd(), fullPath));
+    }
+  };
+
+  if (fs.existsSync(groupDir)) {
+    walk(groupDir);
+  }
+
+  return collected.sort();
+}
+
+function captureRepoDiffSnapshot(): { changedFiles: string[]; diff: string } {
+  try {
+    const changedFiles = execFileSync(
+      'git',
+      ['diff', '--name-only'],
+      {
+        cwd: process.cwd(),
+        encoding: 'utf-8',
+      },
+    )
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const diff = execFileSync(
+      'git',
+      ['diff', '--no-color', '--', '.'],
+      {
+        cwd: process.cwd(),
+        encoding: 'utf-8',
+        maxBuffer: 8 * 1024 * 1024,
+      },
+    ).slice(0, 200_000);
+
+    return { changedFiles, diff };
+  } catch (err) {
+    logger.warn({ err }, 'Failed to capture repo diff snapshot');
+    return { changedFiles: [], diff: '' };
+  }
+}
+
+function captureRunEnrichment(
+  group: RegisteredGroup,
+  traceStartedAt: string,
+): {
+  changedFiles: string[];
+  diff: string;
+  artifacts: string[];
+} {
+  const artifacts = collectGroupArtifacts(group.folder, traceStartedAt);
+  if (!group.isMain) {
+    return { changedFiles: [], diff: '', artifacts };
+  }
+  const repo = captureRepoDiffSnapshot();
+  return {
+    changedFiles: repo.changedFiles,
+    diff: repo.diff,
+    artifacts,
+  };
 }
 
 /**
@@ -347,6 +371,40 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   }
 
   const prompt = formatMessages(missedMessages, TIMEZONE);
+  const traceRun = createTraceRun({
+    chatJid,
+    groupFolder: group.folder,
+    assistantName: ASSISTANT_NAME,
+  });
+  emitRuntimeEvent({
+    traceId: traceRun.trace_id,
+    type: 'run_started',
+    phase: 'queued',
+    summary: `Started run for ${group.folder}`,
+    data: {
+      messageCount: missedMessages.length,
+      isMainGroup,
+    },
+  });
+  emitRuntimeEvent({
+    traceId: traceRun.trace_id,
+    type: 'message_received',
+    phase: 'queued',
+    summary: `Loaded ${missedMessages.length} pending message(s)`,
+    data: {
+      messageIds: missedMessages.map((m) => m.id),
+      sinceTimestamp,
+    },
+  });
+  emitRuntimeEvent({
+    traceId: traceRun.trace_id,
+    type: 'prompt_built',
+    phase: 'prompt',
+    summary: 'Built prompt from queued messages',
+    data: {
+      promptLength: prompt.length,
+    },
+  });
 
   // Advance cursor so the piping path in startMessageLoop won't re-fetch
   // these messages. Save the old cursor so we can roll back on error.
@@ -378,7 +436,12 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   let hadError = false;
   let outputSentToUser = false;
 
-  const output = await runAgent(group, prompt, chatJid, async (result) => {
+  const output = await runAgent(
+    group,
+    prompt,
+    chatJid,
+    traceRun.trace_id,
+    async (result) => {
     // Streaming output callback — called for each agent result
     if (result.result) {
       const raw =
@@ -388,9 +451,29 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
       const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
       logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
+      emitRuntimeEvent({
+        traceId: traceRun.trace_id,
+        type: 'assistant_output',
+        phase: 'execution',
+        summary: `Assistant produced ${raw.length} characters`,
+        data: {
+          rawLength: raw.length,
+          sessionId: result.newSessionId || sessions[group.folder] || null,
+        },
+      });
       if (text) {
         await channel.sendMessage(chatJid, text);
         outputSentToUser = true;
+        emitRuntimeEvent({
+          traceId: traceRun.trace_id,
+          type: 'message_sent',
+          phase: 'delivery',
+          summary: 'Sent assistant output to channel',
+          data: {
+            textLength: text.length,
+            channel: channel.name,
+          },
+        });
       }
       // Only reset idle timer on actual results, not session-update markers (result: null)
       resetIdleTimer();
@@ -403,7 +486,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     if (result.status === 'error') {
       hadError = true;
     }
-  });
+    },
+  );
 
   await channel.setTyping?.(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
@@ -425,9 +509,34 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       { group: group.name },
       'Agent error, rolled back message cursor for retry',
     );
+    const enrichment = captureRunEnrichment(group, traceRun.started_at);
+    finishTraceRun({
+      traceId: traceRun.trace_id,
+      status: 'error',
+      summary: 'Run failed and cursor was rolled back',
+      data: {
+        outputSentToUser,
+        changed_files: enrichment.changedFiles,
+        diff: enrichment.diff,
+        artifacts: enrichment.artifacts,
+      },
+    });
     return false;
   }
 
+  const enrichment = captureRunEnrichment(group, traceRun.started_at);
+  finishTraceRun({
+    traceId: traceRun.trace_id,
+    status: 'completed',
+    summary: 'Run completed successfully',
+    data: {
+      outputSentToUser,
+      messageCount: missedMessages.length,
+      changed_files: enrichment.changedFiles,
+      diff: enrichment.diff,
+      artifacts: enrichment.artifacts,
+    },
+  });
   return true;
 }
 
@@ -435,6 +544,7 @@ async function runAgent(
   group: RegisteredGroup,
   prompt: string,
   chatJid: string,
+  traceId: string,
   onOutput?: (output: ContainerOutput) => Promise<void>,
 ): Promise<'success' | 'error'> {
   const isMain = group.isMain === true;
@@ -489,9 +599,29 @@ async function runAgent(
         assistantName: ASSISTANT_NAME,
         activeSkills,
       },
-      (proc, containerName) =>
-        queue.registerProcess(chatJid, proc, containerName, group.folder),
+      (proc, containerName) => {
+        queue.registerProcess(chatJid, proc, containerName, group.folder);
+        emitRuntimeEvent({
+          traceId,
+          type: 'container_started',
+          phase: 'container',
+          summary: `Started container ${containerName}`,
+          data: {
+            containerName,
+            groupFolder: group.folder,
+          },
+        });
+      },
       wrappedOnOutput,
+      (event) => {
+        emitRuntimeEvent({
+          traceId,
+          type: (event.type as Parameters<typeof emitRuntimeEvent>[0]['type']) || 'agent_waiting',
+          phase: event.phase || 'execution',
+          summary: event.summary || event.type,
+          data: event.data,
+        });
+      },
     );
 
     if (output.newSessionId) {
@@ -815,7 +945,32 @@ async function main(): Promise<void> {
 
     const channel = findChannel(channels, chatJid);
     if (!channel) return;
-    await channel.sendMessage(chatJid, formatStatusReport(group));
+    await channel.sendMessage(
+      chatJid,
+      formatStatusReport(group, channels.map((ch) => ch.name)),
+    );
+  }
+
+  async function handleRuntimeCommand(chatJid: string): Promise<void> {
+    const group = registeredGroups[chatJid];
+    if (!group?.isMain) {
+      const channel = findChannel(channels, chatJid);
+      if (channel) {
+        await channel.sendMessage(chatJid, formatMainOnlyMessage('/runtime'));
+      }
+      return;
+    }
+
+    const channel = findChannel(channels, chatJid);
+    if (!channel) return;
+    await channel.sendMessage(
+      chatJid,
+      formatRuntimeReport(group, {
+        connectedChannels: channels.map((ch) => ch.name),
+        registeredGroupsCount: Object.keys(registeredGroups).length,
+        sessionsCount: Object.keys(sessions).length,
+      }),
+    );
   }
 
   // Channel callbacks (shared by all channels)
@@ -850,6 +1005,13 @@ async function main(): Promise<void> {
         return;
       }
 
+      if (trimmed === '/runtime') {
+        handleRuntimeCommand(chatJid).catch((err) =>
+          logger.error({ err, chatJid }, 'Runtime command error'),
+        );
+        return;
+      }
+
       // Sender allowlist drop mode: discard messages from denied senders before storing
       if (!msg.is_from_me && !msg.is_bot_message && registeredGroups[chatJid]) {
         const cfg = loadSenderAllowlist();
@@ -876,6 +1038,8 @@ async function main(): Promise<void> {
       isGroup?: boolean,
     ) => storeChatMetadata(chatJid, timestamp, name, channel, isGroup),
     registeredGroups: () => registeredGroups,
+    connectedChannelNames: () => channels.map((ch) => ch.name),
+    sessionCount: () => Object.keys(sessions).length,
     ensureRegisteredChat: (chatJid: string, group: RegisteredGroup) => {
       const existing = registeredGroups[chatJid];
       if (
@@ -898,6 +1062,21 @@ async function main(): Promise<void> {
       }
       registerGroup(chatJid, group);
       return registeredGroups[chatJid];
+    },
+    cleanupRegisteredChatsByPrefix: (prefix: string, keepJids: string[] = []) => {
+      let removed = 0;
+      for (const jid of Object.keys(registeredGroups)) {
+        if (!jid.startsWith(prefix) || keepJids.includes(jid)) continue;
+        delete registeredGroups[jid];
+        removed += 1;
+      }
+      const dbRemoved = deleteRegisteredGroupsByPrefix(prefix, keepJids);
+      if (removed > 0 || dbRemoved > 0) {
+        logger.info(
+          { prefix, keepJids, memoryRemoved: removed, dbRemoved },
+          'Cleaned up registered chats by prefix',
+        );
+      }
     },
   };
 

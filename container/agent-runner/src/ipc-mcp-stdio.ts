@@ -16,6 +16,7 @@ const IPC_DIR = '/workspace/ipc';
 const MESSAGES_DIR = path.join(IPC_DIR, 'messages');
 const TASKS_DIR = path.join(IPC_DIR, 'tasks');
 const SUBAGENTS_DIR = path.join(IPC_DIR, 'subagents');
+const MEMORIES_FILE = '/workspace/group/MEMORIES.md';
 
 // Context from environment variables (set by the agent runner)
 const chatJid = process.env.NANOCLAW_CHAT_JID!;
@@ -42,6 +43,56 @@ interface SubagentState {
 }
 
 const subagents = new Map<string, SubagentState>();
+
+function ensureMemoriesFile(): void {
+  if (fs.existsSync(MEMORIES_FILE)) return;
+  fs.writeFileSync(
+    MEMORIES_FILE,
+    '# Durable Memories\n\nUse this file for medium-term facts that should survive thread rotation.\n',
+  );
+}
+
+function readMemoriesFile(): string {
+  ensureMemoriesFile();
+  return fs.readFileSync(MEMORIES_FILE, 'utf-8');
+}
+
+function appendMemoryFact(fact: string, category?: string): boolean {
+  ensureMemoriesFile();
+  const trimmedFact = fact.trim();
+  if (!trimmedFact) return false;
+
+  const content = readMemoriesFile();
+  const existingLines = content.split('\n').map((line) => line.trim());
+  if (existingLines.some((line) => line.includes(trimmedFact))) {
+    return false;
+  }
+
+  const section = category?.trim() || 'Facts';
+  const heading = `## ${section}`;
+  const entry = `- ${new Date().toISOString()}: ${trimmedFact}`;
+
+  if (!content.includes(heading)) {
+    fs.appendFileSync(MEMORIES_FILE, `\n${heading}\n${entry}\n`);
+    return true;
+  }
+
+  const updated = content.replace(heading, `${heading}\n${entry}`);
+  fs.writeFileSync(MEMORIES_FILE, updated);
+  return true;
+}
+
+function forgetMemoryFact(match: string): boolean {
+  ensureMemoriesFile();
+  const content = readMemoriesFile();
+  const lines = content.split('\n');
+  const nextLines = lines.filter((line) => !line.includes(match.trim()));
+  if (nextLines.length === lines.length) {
+    return false;
+  }
+  fs.writeFileSync(MEMORIES_FILE, `${nextLines.join('\n').replace(/\n+$/, '\n')}`);
+  return true;
+}
 
 function writeIpcFile(dir: string, data: object): string {
   fs.mkdirSync(dir, { recursive: true });
@@ -205,6 +256,65 @@ const server = new McpServer({
   name: 'nanoclaw',
   version: '1.0.0',
 });
+
+server.tool(
+  'remember_fact',
+  'Store an important fact in durable group memory so it survives thread rotation.',
+  {
+    fact: z.string().describe('The fact to remember'),
+    category: z.string().optional().describe('Optional section name, for example Preferences or Paths'),
+  },
+  async (args) => {
+    const added = appendMemoryFact(args.fact, args.category);
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: added
+            ? `Saved durable memory to MEMORIES.md${args.category ? ` under ${args.category}` : ''}.`
+            : 'That fact is already present in MEMORIES.md.',
+        },
+      ],
+    };
+  },
+);
+
+server.tool(
+  'list_memories',
+  'Read the durable group memory file.',
+  {},
+  async () => {
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: readMemoriesFile(),
+        },
+      ],
+    };
+  },
+);
+
+server.tool(
+  'forget_fact',
+  'Remove a previously stored durable memory by substring match.',
+  {
+    match: z.string().describe('Substring to match against a stored memory line'),
+  },
+  async (args) => {
+    const removed = forgetMemoryFact(args.match);
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: removed
+            ? 'Removed matching durable memory.'
+            : 'No matching durable memory found.',
+        },
+      ],
+    };
+  },
+);
 
 server.tool(
   'send_message',

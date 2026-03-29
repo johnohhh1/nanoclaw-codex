@@ -57,6 +57,13 @@ export interface ContainerOutput {
   error?: string;
 }
 
+export interface ContainerTraceEvent {
+  type: string;
+  phase: string;
+  summary: string;
+  data?: Record<string, unknown>;
+}
+
 interface VolumeMount {
   hostPath: string;
   containerPath: string;
@@ -309,6 +316,7 @@ export async function runContainerAgent(
   input: ContainerInput,
   onProcess: (proc: ChildProcess, containerName: string) => void,
   onOutput?: (output: ContainerOutput) => Promise<void>,
+  onTraceEvent?: (event: ContainerTraceEvent) => void,
 ): Promise<ContainerOutput> {
   const startTime = Date.now();
 
@@ -430,7 +438,21 @@ export async function runContainerAgent(
       const chunk = data.toString();
       const lines = chunk.trim().split('\n');
       for (const line of lines) {
-        if (line) logger.debug({ container: group.folder }, line);
+        if (!line) continue;
+        if (line.startsWith('[agent-trace]')) {
+          const jsonPayload = line.slice('[agent-trace]'.length).trim();
+          try {
+            const event = JSON.parse(jsonPayload) as ContainerTraceEvent;
+            onTraceEvent?.(event);
+          } catch (err) {
+            logger.warn(
+              { container: group.folder, err, line },
+              'Failed to parse agent trace event',
+            );
+          }
+          continue;
+        }
+        logger.debug({ container: group.folder }, line);
       }
       // Don't reset timeout on stderr — SDK writes debug logs continuously.
       // Timeout only resets on actual output (OUTPUT_MARKER in stdout).

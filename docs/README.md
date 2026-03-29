@@ -6,6 +6,11 @@ The files in this directory are developer references. Some older design document
 
 | This directory | Documentation site |
 |---|---|
+| [ARCHITECTURE_DIAGRAM.md](ARCHITECTURE_DIAGRAM.md) | Developer-only architecture block diagram |
+| [OPS_ARCHITECTURE_DIAGRAM.md](OPS_ARCHITECTURE_DIAGRAM.md) | Ops-focused runtime / service diagram |
+| [RUNTIME_AUDIT.md](RUNTIME_AUDIT.md) | Current audited live/runtime truth for this port |
+| [ACTUAL_VS_DESIRED.md](ACTUAL_VS_DESIRED.md) | Gap list between current runtime and desired steady state |
+| `http://localhost:3000/ops` | Live Mission Control / operator console for the Web UI channel |
 | [SPEC.md](SPEC.md) | [Architecture](https://docs.nanoclaw.dev/concepts/architecture) |
 | [SECURITY.md](SECURITY.md) | [Security model](https://docs.nanoclaw.dev/concepts/security) |
 | [REQUIREMENTS.md](REQUIREMENTS.md) | [Introduction](https://docs.nanoclaw.dev/introduction) |

@@ -43,8 +43,16 @@ Files you create are saved in `/workspace/group/`. Use this for notes, research,
 
 The `conversations/` folder contains searchable history of past conversations. Use this to recall context from previous sessions.
 
+The `MEMORIES.md` file is the durable medium-term memory layer for this group. Use it for facts that should survive Codex thread rotation.
+
+Memory tools available through MCP:
+- `mcp__nanoclaw__remember_fact` to save an important fact
+- `mcp__nanoclaw__list_memories` to read durable memory
+- `mcp__nanoclaw__forget_fact` to remove stale memory
+
 When you learn something important:
-- Create files for structured data (e.g., `customers.md`, `preferences.md`)
+- Prefer `remember_fact` for concise durable facts like preferences, stable paths, recurring constraints, or user-specific operating rules
+- Create files for larger structured data (e.g., `customers.md`, `preferences.md`)
 - Split files larger than 500 lines into folders
 - Keep an index in your memory for the files you create
 
@@ -77,8 +85,10 @@ No `##` headings. No `[links](url)`. No `**double stars**`.
 Standard Markdown works: `**bold**`, `*italic*`, `[links](url)`, `# headings`, fenced code blocks.
 
 The Web UI runs in the browser at `http://localhost:3000` when `WEB_UI_PORT` is configured.
+The stable Web UI admin group is `web:web_ui` unless the host overrides `WEB_UI_GROUP_JID`.
 If the user uses the microphone button, speech is transcribed client-side before it reaches you, so you still receive normal text messages.
 When the user asks about the live UI, use `agent-browser` against `http://host.docker.internal:3000` from inside the sandbox instead of guessing from memory.
+Use `/runtime`, `/status`, and `/capabilities` when you need the host’s current merged truth instead of relying on stale assumptions.
 
 ### Discord channels (folder starts with `discord_`)
 

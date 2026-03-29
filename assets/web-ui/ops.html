@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pepper Mission Control</title>
+  <link rel="stylesheet" href="css/ops.css">
+</head>
+<body>
+  <div class="ops-shell">
+    <header class="ops-header">
+      <div>
+        <p class="ops-kicker">Mission Control</p>
+        <h1>Pepper Operator Console</h1>
+      </div>
+      <div class="ops-header-actions">
+        <button id="ops-refresh" class="ops-link ops-button">Refresh</button>
+        <span id="ops-connection" class="ops-badge muted">Connecting</span>
+        <a href="/" class="ops-link">Back To Chat</a>
+      </div>
+    </header>
+
+    <section class="ops-summary">
+      <article class="ops-stat">
+        <span class="ops-stat-label">Active Runs</span>
+        <strong id="stat-active">0</strong>
+      </article>
+      <article class="ops-stat">
+        <span class="ops-stat-label">Recent Runs</span>
+        <strong id="stat-recent">0</strong>
+      </article>
+      <article class="ops-stat">
+        <span class="ops-stat-label">Failures</span>
+        <strong id="stat-errors">0</strong>
+      </article>
+      <article class="ops-stat">
+        <span class="ops-stat-label">Assistant</span>
+        <strong id="stat-assistant">Pepper</strong>
+      </article>
+    </section>
+
+    <section class="ops-spotlight">
+      <div class="ops-spotlight-main">
+        <p class="ops-kicker">Selected Run</p>
+        <h2 id="spotlight-title">No run selected</h2>
+        <p id="spotlight-summary" class="ops-spotlight-summary">Pick a run to inspect its current state.</p>
+      </div>
+      <div class="ops-spotlight-meta">
+        <div class="ops-meta-chip">
+          <span>Trace</span>
+          <strong id="spotlight-trace">-</strong>
+        </div>
+        <div class="ops-meta-chip">
+          <span>Container</span>
+          <strong id="spotlight-container">-</strong>
+        </div>
+        <div class="ops-meta-chip">
+          <span>Session</span>
+          <strong id="spotlight-session">-</strong>
+        </div>
+      </div>
+    </section>
+
+    <main class="ops-grid">
+      <section class="ops-panel">
+        <div class="ops-panel-header">
+          <div>
+            <h2>Runs</h2>
+            <div class="ops-filter-row">
+              <button class="ops-filter active" data-filter="all">All</button>
+              <button class="ops-filter" data-filter="active">Active</button>
+              <button class="ops-filter" data-filter="errors">Errors</button>
+            </div>
+          </div>
+          <span id="runs-count" class="ops-panel-meta">0 total</span>
+        </div>
+        <div class="ops-search-wrap">
+          <input id="runs-search" class="ops-search" type="search" placeholder="Search runs by group, chat, or status">
+        </div>
+        <div id="runs-list" class="ops-scroll"></div>
+      </section>
+
+      <section class="ops-panel ops-panel-wide">
+        <div class="ops-panel-header">
+          <h2>Timeline</h2>
+          <span id="timeline-trace" class="ops-panel-meta">No run selected</span>
+        </div>
+        <div id="timeline-list" class="ops-scroll"></div>
+      </section>
+
+      <section class="ops-panel">
+        <div class="ops-panel-header">
+          <h2>Details</h2>
+        </div>
+        <div id="run-details" class="ops-details"></div>
+      </section>
+    </main>
+
+    <section class="ops-console-grid">
+      <section class="ops-panel">
+        <div class="ops-panel-header">
+          <h2>Changed Files</h2>
+          <span id="files-count" class="ops-panel-meta">0 files</span>
+        </div>
+        <div id="files-list" class="ops-scroll"></div>
+      </section>
+
+      <section class="ops-panel">
+        <div class="ops-panel-header">
+          <h2>Artifacts</h2>
+          <span id="artifacts-count" class="ops-panel-meta">0 artifacts</span>
+        </div>
+        <div id="artifacts-list" class="ops-scroll"></div>
+      </section>
+    </section>
+
+    <section class="ops-console-grid">
+      <section class="ops-panel">
+        <div class="ops-panel-header">
+          <h2>Diff</h2>
+          <span id="diff-count" class="ops-panel-meta">0 chars</span>
+        </div>
+        <pre id="diff-console" class="trace-console"></pre>
+      </section>
+
+      <section class="ops-panel">
+        <div class="ops-panel-header">
+          <h2>Trace Console</h2>
+          <div class="ops-console-toolbar">
+            <button id="console-pretty" class="ops-filter active">Pretty</button>
+            <button id="console-raw" class="ops-filter">Raw</button>
+            <span id="console-count" class="ops-panel-meta">0 lines</span>
+          </div>
+        </div>
+        <pre id="trace-console" class="trace-console"></pre>
+      </section>
+
+      <section class="ops-panel">
+        <div class="ops-panel-header">
+          <h2>Latest Payload</h2>
+          <span class="ops-panel-meta">Most recent event data</span>
+        </div>
+        <pre id="payload-console" class="trace-console"></pre>
+      </section>
+    </section>
+  </div>
+
+  <script src="js/ops.js"></script>
+</body>
+</html>

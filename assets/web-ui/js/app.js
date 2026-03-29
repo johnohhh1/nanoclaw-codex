@@ -254,6 +254,8 @@ let isAgentTyping = false;
 let typingTimeout = null;
 let speechRecognition = null;
 let isListening = false;
+let operatorState = { active: [], recent: [] };
+let selectedTraceId = null;
 
 // ==================== DOM Elements ====================
 const authScreen = document.getElementById('auth-screen');
@@ -278,6 +280,9 @@ const newChatBtn = document.getElementById('new-chat-btn');
 const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
 const agentTypingEl = document.getElementById('agent-typing');
 const langToggle = document.getElementById('lang-toggle');
+const operatorRunCount = document.getElementById('operator-run-count');
+const operatorRunsEl = document.getElementById('operator-runs');
+const operatorEventsEl = document.getElementById('operator-events');
 
 // New feature elements
 const searchBar = document.getElementById('search-bar');
@@ -593,6 +598,102 @@ function updateCurrentSessionActivity() {
     saveSessions();
     renderSessionList();
   }
+}
+
+function formatRuntimeTime(timestamp) {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function applyRuntimeSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') return;
+  operatorState = {
+    active: Array.isArray(snapshot.active) ? snapshot.active : [],
+    recent: Array.isArray(snapshot.recent) ? snapshot.recent : [],
+  };
+
+  if (!selectedTraceId) {
+    selectedTraceId = operatorState.active[0]?.trace_id || operatorState.recent[0]?.trace_id || null;
+  }
+
+  const hasSelected = [...operatorState.active, ...operatorState.recent].some(
+    (run) => run.trace_id === selectedTraceId
+  );
+  if (!hasSelected) {
+    selectedTraceId = operatorState.active[0]?.trace_id || operatorState.recent[0]?.trace_id || null;
+  }
+
+  renderOperatorConsole();
+}
+
+async function fetchRuntimeRuns() {
+  try {
+    const response = await fetch('/api/runtime/runs');
+    if (!response.ok) return;
+    const snapshot = await response.json();
+    applyRuntimeSnapshot(snapshot);
+  } catch (error) {
+    console.warn('Failed to load runtime runs:', error);
+  }
+}
+
+function renderOperatorConsole() {
+  if (!operatorRunsEl || !operatorEventsEl || !operatorRunCount) return;
+
+  const activeRuns = operatorState.active || [];
+  const recentRuns = operatorState.recent || [];
+  operatorRunCount.textContent = `${activeRuns.length} active`;
+
+  const runs = [...activeRuns, ...recentRuns.slice(0, 6)];
+  if (runs.length === 0) {
+    operatorRunsEl.innerHTML = '<div class="operator-empty">No active runs yet.</div>';
+  } else {
+    operatorRunsEl.innerHTML = runs.map((run) => `
+      <button class="operator-run-card ${run.trace_id === selectedTraceId ? 'active' : ''}" data-trace-id="${run.trace_id}">
+        <div class="operator-run-top">
+          <span class="operator-run-title">${escapeHtml(run.group_folder || run.chat_jid)}</span>
+          <span class="operator-status ${escapeHtml(run.status)}">${escapeHtml(run.status)}</span>
+        </div>
+        <div class="operator-run-summary">${escapeHtml(run.last_event_summary || 'No events yet')}</div>
+        <div class="operator-run-bottom">
+          <span class="operator-run-meta">${escapeHtml(run.channel || 'unknown')} · ${escapeHtml(run.chat_jid || '')}</span>
+          <span class="operator-run-meta operator-phase">${escapeHtml(run.phase || 'queued')}</span>
+        </div>
+      </button>
+    `).join('');
+
+    operatorRunsEl.querySelectorAll('.operator-run-card').forEach((button) => {
+      button.addEventListener('click', () => {
+        selectedTraceId = button.getAttribute('data-trace-id');
+        renderOperatorConsole();
+      });
+    });
+  }
+
+  const selectedRun = runs.find((run) => run.trace_id === selectedTraceId) || runs[0];
+  if (!selectedRun) {
+    operatorEventsEl.innerHTML = '<div class="operator-empty">Select a run to inspect events.</div>';
+    return;
+  }
+
+  selectedTraceId = selectedRun.trace_id;
+  const events = Array.isArray(selectedRun.events) ? selectedRun.events.slice(-25).reverse() : [];
+  if (events.length === 0) {
+    operatorEventsEl.innerHTML = '<div class="operator-empty">No timeline events yet.</div>';
+    return;
+  }
+
+  operatorEventsEl.innerHTML = events.map((event) => `
+    <div class="operator-event">
+      <div class="operator-event-top">
+        <span class="operator-event-type">${escapeHtml(event.type || 'event')}</span>
+        <span class="operator-event-meta">${escapeHtml(formatRuntimeTime(event.timestamp))}</span>
+      </div>
+      <div class="operator-event-summary">${escapeHtml(event.summary || '')}</div>
+      <div class="operator-event-data">${escapeHtml(event.phase || 'execution')}${event.data?.containerName ? ` · ${escapeHtml(event.data.containerName)}` : ''}</div>
+    </div>
+  `).join('');
 }
 
 // ==================== Code Syntax Highlighting ====================
@@ -1841,6 +1942,12 @@ function handleWsMessage(data) {
       markUserMessagesAsRead();
       break;
 
+    case 'run_event':
+      if (data.snapshot) {
+        applyRuntimeSnapshot(data.snapshot);
+      }
+      break;
+
     case 'typing':
       showAgentTyping();
       break;
@@ -1903,6 +2010,9 @@ function authenticate() {
 function handleAuthResponse(data) {
   if (data.success) {
     isConnected = true;
+    if (data.chatJid) {
+      chatJid = data.chatJid;
+    }
     updateConnectionStatus('connected');
 
     authScreen.classList.add('hidden');
@@ -1917,6 +2027,7 @@ function handleAuthResponse(data) {
 
     // Load sessions
     loadSessions();
+    fetchRuntimeRuns();
   } else {
     showAuthError(data.error || i18n.t('auth.invalidToken'));
     connectBtn.textContent = i18n.t('auth.connectBtn');
@@ -1942,7 +2053,7 @@ function handleMessage(e) {
     type: 'message',
     content,
     id: msgId,
-    chatJid: `web:${currentSessionId}`,
+    chatJid: chatJid || `web:${currentSessionId}`,
   });
 
   showAgentTyping();

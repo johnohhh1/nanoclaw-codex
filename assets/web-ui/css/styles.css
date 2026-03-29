@@ -8,12 +8,15 @@
 :root {
   --bg-primary: #0f0f0f;
   --bg-secondary: #1a1a1a;
+  --bg-tertiary: #131825;
   --bg-message-user: #2563eb;
   --bg-message-assistant: #2a2a2a;
   --text-primary: #ffffff;
   --text-secondary: #a0a0a0;
+  --text-muted: #7b8499;
   --border-color: #333;
   --success-color: #22c55e;
+  --warning-color: #f59e0b;
   --error-color: #ef4444;
   --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
 }
@@ -255,10 +258,198 @@ button:disabled {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  max-width: 800px;
+  max-width: 1080px;
   width: 100%;
   margin: 0 auto;
   background: var(--bg-primary);
+}
+
+.operator-console {
+  padding: 1rem 1.5rem 0;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.15), transparent 40%),
+    linear-gradient(180deg, rgba(19, 24, 37, 0.95), rgba(15, 15, 15, 0.95));
+  border-bottom: 1px solid var(--border-color);
+}
+
+.operator-console-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.875rem;
+}
+
+.operator-console-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8ab4ff;
+  margin-bottom: 0.2rem;
+}
+
+.operator-console-header h2 {
+  font-size: 1rem;
+}
+
+.operator-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid rgba(138, 180, 255, 0.25);
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.12);
+  color: #cddfff;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.operator-console-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) 1fr;
+  gap: 0.875rem;
+  padding-bottom: 0.875rem;
+}
+
+.operator-panel {
+  background: rgba(12, 16, 24, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+  overflow: hidden;
+  min-height: 180px;
+}
+
+.operator-panel-header {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.operator-panel-header h3 {
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.operator-runs,
+.operator-events {
+  max-height: 240px;
+  overflow: auto;
+  padding: 0.75rem;
+}
+
+.operator-empty {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 0.5rem;
+}
+
+.operator-run-card {
+  width: 100%;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-primary);
+}
+
+.operator-run-card + .operator-run-card,
+.operator-event + .operator-event {
+  margin-top: 0.65rem;
+}
+
+.operator-run-card.active {
+  border-color: rgba(138, 180, 255, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(138, 180, 255, 0.2);
+}
+
+.operator-run-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.operator-run-top,
+.operator-run-bottom,
+.operator-event-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.operator-run-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.operator-run-meta,
+.operator-event-meta,
+.operator-event-data {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.operator-run-summary,
+.operator-event-summary {
+  font-size: 0.86rem;
+  margin-top: 0.4rem;
+  color: var(--text-primary);
+}
+
+.operator-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.operator-status.running {
+  background: rgba(34, 197, 94, 0.16);
+  color: #9ee6b2;
+}
+
+.operator-status.completed {
+  background: rgba(37, 99, 235, 0.16);
+  color: #9ec5ff;
+}
+
+.operator-status.error {
+  background: rgba(239, 68, 68, 0.16);
+  color: #ffb1b1;
+}
+
+.operator-phase {
+  color: #8ab4ff;
+  font-weight: 600;
+}
+
+.operator-event {
+  padding: 0.8rem 0.9rem;
+  border-left: 3px solid rgba(138, 180, 255, 0.35);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 10px;
+}
+
+.operator-event-type {
+  color: #cddfff;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.operator-events::-webkit-scrollbar,
+.operator-runs::-webkit-scrollbar {
+  width: 6px;
+}
+
+.operator-events::-webkit-scrollbar-thumb,
+.operator-runs::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
 }
 
 /* Chat Header */
@@ -568,6 +759,14 @@ button:disabled {
 
   .messages {
     padding: 1rem;
+  }
+
+  .operator-console {
+    padding: 0.875rem 1rem 0;
+  }
+
+  .operator-console-grid {
+    grid-template-columns: 1fr;
   }
 
   .input-area {

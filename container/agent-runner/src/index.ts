@@ -84,6 +84,23 @@ function log(message: string): void {
   console.error(`[agent-runner] ${message}`);
 }
 
+function emitTrace(
+  type: string,
+  phase: string,
+  summary: string,
+  data?: Record<string, unknown>,
+): void {
+  console.error(
+    `[agent-trace] ${JSON.stringify({
+      type,
+      phase,
+      summary,
+      data,
+      timestamp: new Date().toISOString(),
+    })}`,
+  );
+}
+
 function sanitizeFilename(summary: string): string {
   return summary
     .toLowerCase()
@@ -244,6 +261,16 @@ function readInstructionFile(dir: string): string | null {
   }
 }
 
+function readOptionalTextFile(filePath: string): string | null {
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    return fs.readFileSync(filePath, 'utf-8').trim();
+  } catch (err) {
+    log(`Failed to read ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+}
+
 function parseSkillDescription(content: string): string {
   const match = content.match(/description:\s*["']?(.+?)["']?(?:\n|$)/);
   return match?.[1]?.trim() || 'No description.';
@@ -361,6 +388,11 @@ function buildPrompt(prompt: string, containerInput: ContainerInput, extraDirs: 
     sections.push('Workspace instructions:\n' + groupInstructions);
   }
 
+  const durableMemories = readOptionalTextFile('/workspace/group/MEMORIES.md');
+  if (durableMemories) {
+    sections.push('Durable group memory:\n' + durableMemories);
+  }
+
   const channelHints = buildChannelHints(containerInput);
   if (channelHints) {
     sections.push(channelHints);
@@ -387,7 +419,13 @@ function buildPrompt(prompt: string, containerInput: ContainerInput, extraDirs: 
   }
 
   sections.push(prompt);
-  return sections.join('\n\n');
+  const finalPrompt = sections.join('\n\n');
+  emitTrace('prompt_built', 'prompt', 'Built final Codex prompt', {
+    sectionCount: sections.length,
+    promptLength: finalPrompt.length,
+    activeSkillCount: containerInput.activeSkills?.length || 0,
+  });
+  return finalPrompt;
 }
 
 function execFileAsync(
@@ -547,6 +585,11 @@ async function runCodexTurn(
   }
 
   return new Promise((resolve, reject) => {
+    emitTrace('codex_started', 'execution', 'Starting Codex turn', {
+      sessionId: sessionId || null,
+      cwd: '/workspace/group',
+    });
+
     const child = spawn('codex', args, {
       cwd: '/workspace/group',
       env: codexEnv,
@@ -575,6 +618,12 @@ async function runCodexTurn(
         const event = JSON.parse(trimmed) as CodexEvent;
         if (event.type === 'thread.started' && event.thread_id) {
           latestSessionId = event.thread_id;
+          emitTrace(
+            'session_initialized',
+            'execution',
+            'Codex session initialized',
+            { sessionId: latestSessionId },
+          );
           log(`Session initialized: ${latestSessionId}`);
         } else if (event.type === 'turn.failed') {
           fatalError = event.error?.message || event.message || 'Codex turn failed';
@@ -632,6 +681,12 @@ async function runCodexTurn(
       }
 
       if (closedDuringQuery) {
+        emitTrace(
+          'agent_waiting',
+          'idle',
+          'Codex turn stopped after close sentinel',
+          { sessionId: latestSessionId || null },
+        );
         resolve({ newSessionId: latestSessionId, closedDuringQuery: true });
         return;
       }
@@ -658,6 +713,11 @@ async function runCodexTurn(
       }
 
       archiveConversation(prompt, result, latestSessionId, containerInput.assistantName);
+      emitTrace('codex_finished', 'execution', 'Codex turn completed', {
+        sessionId: latestSessionId || null,
+        hasResult: Boolean(result),
+        resultLength: result?.length || 0,
+      });
       writeOutput({
         status: 'success',
         result,
@@ -727,6 +787,11 @@ async function main(): Promise<void> {
       // ignore
     }
     log(`Received input for group: ${containerInput.groupFolder}`);
+    emitTrace('run_bootstrap', 'bootstrap', 'Container input parsed', {
+      groupFolder: containerInput.groupFolder,
+      chatJid: containerInput.chatJid,
+      isMain: containerInput.isMain,
+    });
   } catch (err) {
     writeOutput({
       status: 'error',
@@ -763,6 +828,7 @@ async function main(): Promise<void> {
 
   if (containerInput.script && containerInput.isScheduledTask) {
     log('Running task script...');
+    emitTrace('script_started', 'script', 'Running scheduled task script');
     const scriptResult = await runScript(containerInput.script);
 
     if (!scriptResult || !scriptResult.wakeAgent) {
@@ -806,6 +872,9 @@ async function main(): Promise<void> {
       });
 
       log('Turn ended, waiting for next IPC message...');
+      emitTrace('agent_waiting', 'idle', 'Waiting for next IPC message', {
+        sessionId: sessionId || null,
+      });
 
       const nextMessage = await waitForIpcMessage();
       if (nextMessage === null) {
@@ -814,6 +883,12 @@ async function main(): Promise<void> {
       }
 
       log(`Got new message (${nextMessage.length} chars), starting new turn`);
+      emitTrace(
+        'ipc_message_received',
+        'execution',
+        'Received follow-up IPC message',
+        { length: nextMessage.length },
+      );
       prompt = nextMessage;
     }
   } catch (err) {

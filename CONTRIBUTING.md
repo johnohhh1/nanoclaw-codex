@@ -1,6 +1,6 @@
 # Contributing
 
-This branch is the Codex-native port of NanoClaw. Contributions should match the current runtime, not the removed Claude-era skills system.
+NanoClaw is a Codex-native runtime. Contributions should match the current system, not removed Claude-era behavior.
 
 ## Accepted Changes
 
@@ -27,4 +27,5 @@ This branch is the Codex-native port of NanoClaw. Contributions should match the
 
 ## Channels
 
-The core repo currently contains only the channel registry scaffolding in `src/channels/`. If you want to add Telegram, Slack, WhatsApp, Gmail, or another integration, add the source directly to the repo rather than describing it as an external skill.
+The core repo already ships Telegram, WhatsApp, and Web UI adapters in `src/channels/`.
+If you want to add another integration, add the source directly to the repo rather than describing it as an external skill.

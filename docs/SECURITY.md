@@ -21,6 +21,14 @@ Agents execute in containers (lightweight Linux VMs), providing:
 
 This is the primary security boundary. Rather than relying on application-level permission checks, the attack surface is limited by what's mounted.
 
+### Profile Boundary
+
+NanoClaw now distinguishes between:
+- `safe` profile: default posture for general installs
+- `operator` profile: trusted personal-rig mode with stronger main-group privileges
+
+The profile changes what the main group is allowed to mount. In `safe`, the main group does not get the real project root, the live `/app/src` bind mount, or Docker socket access by default.
+
 ### 2. Mount Security
 
 **External Allowlist** - Mount permissions stored at `~/.config/nanoclaw/mount-allowlist.json`, which is:
@@ -42,7 +50,7 @@ private_key, .secret
 
 **Writable Main Project Root:**
 
-The main group's project root is mounted read-write. This is an intentional tradeoff for the trusted admin channel so the live session can patch the real repo directly. Non-main groups still do not receive the project root mount.
+The real project root is mounted read-write only in `operator` profile for the trusted main group. Non-main groups never receive the project root mount, and `safe` profile main groups do not receive it either.
 
 ### 3. Session Isolation
 
@@ -64,16 +72,20 @@ Messages and task operations are verified against group identity:
 | View all tasks | ✓ | Own only |
 | Manage other groups | ✓ | ✗ |
 
-### 5. Credential Isolation (Credential Proxy)
+### 5. Credential Isolation
 
-Real API credentials **never enter containers**. Instead, the host runs an HTTP credential proxy that injects authentication headers transparently.
+Containers should not receive real provider secrets through mounted files or the
+project `.env`.
 
-**How it works:**
-1. Host starts a credential proxy on `CREDENTIAL_PROXY_PORT` (default: 3001)
-2. Containers receive `ANTHROPIC_BASE_URL=http://host.docker.internal:<port>` and `ANTHROPIC_API_KEY=placeholder`
-3. The SDK sends API requests to the proxy with the placeholder key
-4. The proxy strips placeholder auth, injects real credentials (`x-api-key` or `Authorization: Bearer`), and forwards to `chatgpt.com/backend-api/codex/responses`
-5. Agents cannot discover real credentials — not in environment, stdin, files, or `/proc`
+Current runtime behavior:
+1. The host shadows the project `.env` mount with `/dev/null` for trusted main containers.
+2. Per-group Codex state is mounted from `data/sessions/<group>/.codex/`, not from the project root.
+3. The host/container boundary is responsible for any credential brokering needed by the local Codex/OneCLI setup.
+
+The important guarantee for this repo is operational, not provider-specific:
+- real secrets should stay on the host side
+- containers should only receive the minimum auth material needed to run Codex
+- secrets should never be exposed through repo files, group folders, or generic mounts
 
 **NOT Mounted:**
 - Channel auth sessions (`store/auth/`) - host only
@@ -107,7 +119,7 @@ Real API credentials **never enter containers**. Instead, the host runs an HTTP 
 │  • IPC authorization                                              │
 │  • Mount validation (external allowlist)                          │
 │  • Container lifecycle                                            │
-│  • Credential proxy (injects auth headers)                       │
+│  • Host-side auth and credential handling                        │
 └────────────────────────────────┬─────────────────────────────────┘
                                  │
                                  ▼ Explicit mounts only, no secrets
@@ -116,7 +128,7 @@ Real API credentials **never enter containers**. Instead, the host runs an HTTP 
 │  • Agent execution                                                │
 │  • Bash commands (sandboxed)                                      │
 │  • File operations (limited to mounts)                            │
-│  • API calls routed through credential proxy                     │
-│  • No real credentials in environment or filesystem              │
+│  • API access mediated by host/runtime auth setup                │
+│  • No project-root secrets mounted into the container            │
 └──────────────────────────────────────────────────────────────────┘
 ```

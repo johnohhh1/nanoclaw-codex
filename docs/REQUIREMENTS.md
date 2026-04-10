@@ -7,6 +7,7 @@ This branch targets a Codex-native NanoClaw runtime.
 - Codex CLI based execution inside containers
 - `AGENTS.md` based instruction loading
 - Per-group isolated state
+- Safe-by-default install posture for new users
 - SQLite persistence
 - Filesystem IPC between host and container
 - Scheduled tasks
@@ -21,4 +22,9 @@ This branch targets a Codex-native NanoClaw runtime.
 
 ## Channel Model
 
-The current repo keeps the channel registry scaffolding but does not ship concrete channel implementations in `src/channels/`. Channel code should be added directly in the repository when needed.
+The current repo ships concrete channel implementations in `src/channels/` for:
+- Telegram
+- WhatsApp
+- Web UI
+
+Additional channels should be added directly in the repository when needed.

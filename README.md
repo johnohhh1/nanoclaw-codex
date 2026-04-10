@@ -8,7 +8,11 @@
 
 ## Status
 
-This branch is a full runtime port away from Claude-specific infrastructure.
+NanoClaw is now a Codex-native runtime.
+
+Default install posture:
+- `safe` profile by default for new installs
+- `operator` profile only when you explicitly want trusted main-sandbox autonomy
 
 What exists here now:
 - A Codex CLI based container agent runner
@@ -78,7 +82,7 @@ Currently shipped channel adapters:
 - WhatsApp
 - Web UI
 
-Slack, Discord, Gmail, and similar integrations are not currently implemented in this branch.
+Slack, Discord, Gmail, and similar integrations are not currently implemented in this repo.
 
 ## Runtime Model
 
@@ -92,6 +96,25 @@ Runtime shape:
 
 Current runtime truth is documented in [docs/RUNTIME_AUDIT.md](/home/johnohhh1/nanoclaw/docs/RUNTIME_AUDIT.md).
 
+## Runtime Profiles
+
+NanoClaw supports two runtime profiles:
+
+- `safe`: default for shareable installs. The main group does not get a real project-root bind mount, does not get the live `/app/src` bind mount, and does not get Docker socket access by default.
+- `operator`: trusted personal-rig mode. The main group can mount the real repo, receive the live runner source bind mount, and optionally receive Docker socket access.
+
+Set it with:
+
+```ini
+NANOCLAW_PROFILE=safe
+```
+
+or
+
+```ini
+NANOCLAW_PROFILE=operator
+```
+
 ## Channel Loading
 
 Channels are loaded conditionally from `src/channels/index.ts`:
@@ -99,7 +122,7 @@ Channels are loaded conditionally from `src/channels/index.ts`:
 - WhatsApp loads when `store/auth/` already contains auth state
 - Web UI loads when `WEB_UI_PORT` is configured
 
-The branch currently treats Telegram and Web UI as the main operator-facing control surfaces.
+The current runtime treats Telegram and Web UI as the main operator-facing control surfaces.
 
 ## Operator Surfaces
 
@@ -139,10 +162,12 @@ Behavior:
 - `setup.sh` now prompts you to choose a custom high port instead of nudging you toward a standard default
 - it binds to `WEB_UI_HOST` and defaults to `0.0.0.0` so agent containers can reach it via `host.docker.internal`
 - `WEB_UI_AUTH_TOKEN` is optional; when set, the browser must provide it to connect
+- `setup.sh` auto-generates a Web UI auth token for `safe` profile installs if you leave it blank
 - it registers one stable admin group by default: `web:web_ui`
 - the UI uses `ASSISTANT_NAME` for the displayed assistant identity
 - microphone input uses the browser Web Speech API client-side when available
-- Web UI sessions run as an admin/operator surface, so Pepper can inspect `localhost`, use browser automation, and operate on the real repo from that channel
+- in `operator` profile the Web UI stable group is treated as an admin/operator surface
+- in `safe` profile the Web UI stable group is not auto-elevated to main/admin
 
 The web channel uses the same inbound message pipeline as Telegram: messages are stored, routed through the normal group queue, and replies are sent back over the active WebSocket transport. Browser tabs are transport sessions; the persistent group identity is the stable Web UI admin group.
 
@@ -164,13 +189,13 @@ Current note:
 
 ## Main Container Behavior
 
-For the main/admin group, the live container now:
-- mounts the real repo at `/workspace/project` as read-write
-- bind-mounts `container/agent-runner/src` directly into `/app/src`
-- can mount `/var/run/docker.sock` for runtime control
-- includes the Docker CLI in the agent image when the container is rebuilt
+In `operator` profile, the trusted main/admin group can:
+- mount the real repo at `/workspace/project` as read-write
+- bind-mount `container/agent-runner/src` directly into `/app/src`
+- mount `/var/run/docker.sock` for runtime control
+- use the Docker CLI bundled into the agent image
 
-The in-container runner is now patched in real project source, not just a session copy. That means fixes to `container/agent-runner/src/*` survive image rebuilds and redeploys.
+In `safe` profile, the main group stays scoped to its own group folder plus shared runtime state, without those elevated host binds.
 
 If you want Docker control from inside the main agent container, the host service needs:
 
@@ -241,14 +266,14 @@ If you are changing the container image or in-container runner:
 
 ## Current Port Notes
 
-This branch is not just "NanoClaw with a different model."
+NanoClaw is not just "the old app with a different model."
 
 It is a practical Codex-native port with:
 - a real Codex CLI container runner
 - MCP-backed tool bridging from the sandbox back to the host
 - subagent and scheduled-task controls exposed through the in-container MCP server
-- writable real-repo access for the main/admin sandbox
-- live bind-mounted `/app/src` runner source so runner patches survive redeploys
+- optional writable real-repo access for the trusted main/admin sandbox in `operator` profile
+- optional live bind-mounted `/app/src` runner source in `operator` profile
 - browser tooling and optional Docker runtime control inside the main sandbox
 
 If you are deciding what is actually true today, prefer:
@@ -258,4 +283,4 @@ If you are deciding what is actually true today, prefer:
 
 ## Documentation
 
-The docs in `docs/` are now best treated as developer references. Older product-design material that described the Claude-era skills marketplace and related setup flows has been removed or condensed in this branch.
+The docs in `docs/` are developer references first. Historical porting material should not be treated as the current product contract.

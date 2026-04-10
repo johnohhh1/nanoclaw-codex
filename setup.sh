@@ -78,6 +78,10 @@ choose_runtime() {
   fail "No supported container runtime detected. Install Docker or Apple Container first."
 }
 
+generate_token() {
+  node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
+}
+
 normalize_folder() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//; s/-+/-/g'
 }
@@ -130,6 +134,34 @@ run_step environment
 runtime="$(choose_runtime)"
 printf 'Using container runtime: %s\n' "$runtime"
 
+step "Choosing install profile"
+printf 'Profiles:\n'
+printf '1. safe     - safer public/default install, no project-root bind or Docker socket in the main sandbox\n'
+printf '2. operator - trusted personal rig with elevated autonomy for the main sandbox\n'
+profile_choice="$(ask "Select a profile" "1")"
+case "$profile_choice" in
+  1|safe|Safe)
+    runtime_profile="safe"
+    ;;
+  2|operator|Operator)
+    runtime_profile="operator"
+    ;;
+  *)
+    fail "Unsupported profile selection: $profile_choice"
+    ;;
+esac
+
+upsert_env "NANOCLAW_PROFILE" "$runtime_profile"
+if [[ "$runtime_profile" == "safe" ]]; then
+  upsert_env "CONTAINER_MOUNT_DOCKER_SOCKET" "false"
+else
+  if confirm "Allow the main operator sandbox to mount the Docker socket?" "n"; then
+    upsert_env "CONTAINER_MOUNT_DOCKER_SOCKET" "true"
+  else
+    upsert_env "CONTAINER_MOUNT_DOCKER_SOCKET" "false"
+  fi
+fi
+
 step "Choosing channel"
 printf 'Supported channels in this branch:\n'
 printf '1. Telegram\n'
@@ -177,6 +209,12 @@ if confirm "Enable the local Web UI too?" "n"; then
   web_ui_auth_token="$(ask "Web UI auth token (leave blank for none)" "")"
   web_ui_group_jid="$(ask "Web UI stable group JID" "web:web_ui")"
   web_ui_group_name="$(ask "Web UI group name" "Web UI")"
+
+  if [[ "$runtime_profile" == "safe" && -z "$web_ui_auth_token" ]]; then
+    web_ui_auth_token="$(generate_token)"
+    printf '\nGenerated a Web UI auth token for safe profile installs.\n'
+    printf 'Token: %s\n' "$web_ui_auth_token"
+  fi
 
   upsert_env "WEB_UI_PORT" "$web_ui_port"
   upsert_env "WEB_UI_HOST" "$web_ui_host"
@@ -237,6 +275,7 @@ step "Verifying installation"
 run_step verify
 
 printf '\nSetup complete.\n'
+printf 'Profile: %s\n' "$runtime_profile"
 printf 'Channel: %s\n' "$channel"
 printf 'Group JID: %s\n' "$jid"
 printf 'Folder: %s\n' "$folder"

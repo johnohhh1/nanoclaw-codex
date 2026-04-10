@@ -51,11 +51,6 @@ import { resolveGroupFolderPath } from './group-folder.js';
 import { startIpcWatcher } from './ipc.js';
 import { findChannel, formatMessages, formatOutbound } from './router.js';
 import {
-  restoreRemoteControl,
-  startRemoteControl,
-  stopRemoteControl,
-} from './remote-control.js';
-import {
   isSenderAllowed,
   isTriggerAllowed,
   loadSenderAllowlist,
@@ -770,7 +765,6 @@ async function main(): Promise<void> {
     ensureOneCLIAgent(jid, group);
   }
 
-  restoreRemoteControl();
   await loadConfiguredChannels();
 
   // Graceful shutdown handlers
@@ -782,48 +776,6 @@ async function main(): Promise<void> {
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
-
-  // Handle /remote-control and /remote-control-end commands
-  async function handleRemoteControl(
-    command: string,
-    chatJid: string,
-    msg: NewMessage,
-  ): Promise<void> {
-    const group = registeredGroups[chatJid];
-    if (!group?.isMain) {
-      logger.warn(
-        { chatJid, sender: msg.sender },
-        'Remote control rejected: not main group',
-      );
-      return;
-    }
-
-    const channel = findChannel(channels, chatJid);
-    if (!channel) return;
-
-    if (command === '/remote-control') {
-      const result = await startRemoteControl(
-        msg.sender,
-        chatJid,
-        process.cwd(),
-      );
-      if (result.ok) {
-        await channel.sendMessage(chatJid, result.url);
-      } else {
-        await channel.sendMessage(
-          chatJid,
-          `Remote Control failed: ${result.error}`,
-        );
-      }
-    } else {
-      const result = stopRemoteControl();
-      if (result.ok) {
-        await channel.sendMessage(chatJid, 'Remote Control session ended.');
-      } else {
-        await channel.sendMessage(chatJid, result.error);
-      }
-    }
-  }
 
   async function handleSkillsCommand(
     chatJid: string,
@@ -842,6 +794,14 @@ async function main(): Promise<void> {
     }
 
     if (parts[1] === 'create') {
+      if (!group.isMain) {
+        await channel.sendMessage(
+          chatJid,
+          formatMainOnlyMessage('/skills create'),
+        );
+        return;
+      }
+
       if (parts.length !== 3) {
         await channel.sendMessage(chatJid, 'Usage:\n/skills create <name>');
         return;
@@ -969,13 +929,6 @@ async function main(): Promise<void> {
   const channelOpts = {
     onMessage: (chatJid: string, msg: NewMessage) => {
       const trimmed = msg.content.trim();
-      if (trimmed === '/remote-control' || trimmed === '/remote-control-end') {
-        handleRemoteControl(trimmed, chatJid, msg).catch((err) =>
-          logger.error({ err, chatJid }, 'Remote control command error'),
-        );
-        return;
-      }
-
       if (trimmed === '/skills' || trimmed.startsWith('/skills ')) {
         handleSkillsCommand(chatJid, trimmed).catch((err) =>
           logger.error({ err, chatJid }, 'Skills command error'),

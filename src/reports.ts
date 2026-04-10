@@ -111,9 +111,13 @@ export function formatCapabilitiesReport(group: RegisteredGroup): string {
   lines.push('• Playwright for deterministic browser automation');
   if (IS_OPERATOR_PROFILE) {
     lines.push('• Real project access in the trusted main sandbox');
-    lines.push('• Docker CLI and optional Docker socket in the trusted main sandbox');
+    lines.push(
+      '• Docker CLI and optional Docker socket in the trusted main sandbox',
+    );
   } else {
-    lines.push('• Safe profile: no real project-root bind and no Docker socket by default');
+    lines.push(
+      '• Safe profile: no real project-root bind and no Docker socket by default',
+    );
   }
   lines.push('• Immediate progress replies via send_message');
   lines.push('• Subagents via team_create / team_send_message / task_output');

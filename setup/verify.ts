@@ -105,13 +105,8 @@ export async function run(_args: string[]): Promise<void> {
     credentials = 'missing';
   }
 
-  // 4. Check channel auth (detect configured channels by credentials)
-  const envVars = readEnvFile([
-    'TELEGRAM_BOT_TOKEN',
-    'SLACK_BOT_TOKEN',
-    'SLACK_APP_TOKEN',
-    'DISCORD_BOT_TOKEN',
-  ]);
+  // 4. Check channel auth for the channels this branch actually ships.
+  const envVars = readEnvFile(['TELEGRAM_BOT_TOKEN', 'WEB_UI_PORT']);
 
   const channelAuth: Record<string, string> = {};
 
@@ -121,18 +116,14 @@ export async function run(_args: string[]): Promise<void> {
     channelAuth.whatsapp = 'authenticated';
   }
 
-  // Token-based channels: check .env
+  // Telegram: check .env or process env
   if (process.env.TELEGRAM_BOT_TOKEN || envVars.TELEGRAM_BOT_TOKEN) {
     channelAuth.telegram = 'configured';
   }
-  if (
-    (process.env.SLACK_BOT_TOKEN || envVars.SLACK_BOT_TOKEN) &&
-    (process.env.SLACK_APP_TOKEN || envVars.SLACK_APP_TOKEN)
-  ) {
-    channelAuth.slack = 'configured';
-  }
-  if (process.env.DISCORD_BOT_TOKEN || envVars.DISCORD_BOT_TOKEN) {
-    channelAuth.discord = 'configured';
+
+  // Web UI: check for an explicit listener port
+  if (process.env.WEB_UI_PORT || envVars.WEB_UI_PORT) {
+    channelAuth.web = 'configured';
   }
 
   const configuredChannels = Object.keys(channelAuth);

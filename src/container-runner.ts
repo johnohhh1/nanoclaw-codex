@@ -16,7 +16,9 @@ import {
   DATA_DIR,
   GROUPS_DIR,
   IDLE_TIMEOUT,
+  IS_OPERATOR_PROFILE,
   ONECLI_URL,
+  RUNTIME_PROFILE,
   TIMEZONE,
 } from './config.js';
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
@@ -120,9 +122,10 @@ function buildVolumeMounts(
   const projectRoot = process.cwd();
   const groupDir = resolveGroupFolderPath(group.folder);
   const skillsDir = path.join(projectRoot, 'skills');
+  const hasOperatorAccess = isMain && IS_OPERATOR_PROFILE;
 
-  if (isMain) {
-    // Main gets direct read-write access to the real project root.
+  if (hasOperatorAccess) {
+    // Operator-profile main gets direct read-write access to the real project root.
     mounts.push({
       hostPath: projectRoot,
       containerPath: '/workspace/project',
@@ -140,14 +143,14 @@ function buildVolumeMounts(
       });
     }
 
-    // Main also gets its group folder as the working directory
+    // Operator-profile main also gets its group folder as the working directory.
     mounts.push({
       hostPath: groupDir,
       containerPath: '/workspace/group',
       readonly: false,
     });
   } else {
-    // Other groups only get their own folder
+    // Safe-profile main groups and all non-main groups only get their own folder.
     mounts.push({
       hostPath: groupDir,
       containerPath: '/workspace/group',
@@ -170,7 +173,7 @@ function buildVolumeMounts(
     mounts.push({
       hostPath: skillsDir,
       containerPath: '/workspace/skills-catalog',
-      readonly: !isMain,
+      readonly: !hasOperatorAccess,
     });
   }
 
@@ -209,7 +212,7 @@ function buildVolumeMounts(
     'agent-runner',
     'src',
   );
-  if (fs.existsSync(agentRunnerSrc)) {
+  if (hasOperatorAccess && fs.existsSync(agentRunnerSrc)) {
     mounts.push({
       hostPath: agentRunnerSrc,
       containerPath: '/app/src',
@@ -217,7 +220,7 @@ function buildVolumeMounts(
     });
   }
 
-  if (isMain && CONTAINER_MOUNT_DOCKER_SOCKET) {
+  if (hasOperatorAccess && CONTAINER_MOUNT_DOCKER_SOCKET) {
     if (fs.existsSync(CONTAINER_DOCKER_SOCKET_PATH)) {
       mounts.push({
         hostPath: CONTAINER_DOCKER_SOCKET_PATH,
@@ -237,7 +240,7 @@ function buildVolumeMounts(
     const validatedMounts = validateAdditionalMounts(
       group.containerConfig.additionalMounts,
       group.name,
-      isMain,
+      hasOperatorAccess,
     );
     mounts.push(...validatedMounts);
   }
@@ -283,10 +286,10 @@ async function buildContainerArgs(
     args.push('-e', 'HOME=/home/node');
   }
 
-  if (
-    CONTAINER_MOUNT_DOCKER_SOCKET &&
-    fs.existsSync(CONTAINER_DOCKER_SOCKET_PATH)
-  ) {
+  const dockerSocketMounted = mounts.some(
+    (mount) => mount.containerPath === '/var/run/docker.sock',
+  );
+  if (dockerSocketMounted && fs.existsSync(CONTAINER_DOCKER_SOCKET_PATH)) {
     try {
       const dockerSocketStats = fs.statSync(CONTAINER_DOCKER_SOCKET_PATH);
       args.push('--group-add', `${dockerSocketStats.gid}`);
@@ -355,6 +358,7 @@ export async function runContainerAgent(
       containerName,
       mountCount: mounts.length,
       isMain: input.isMain,
+      profile: RUNTIME_PROFILE,
     },
     'Spawning container agent',
   );

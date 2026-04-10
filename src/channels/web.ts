@@ -1,6 +1,11 @@
 import path from 'path';
 
-import { ASSISTANT_NAME, DEFAULT_TRIGGER } from '../config.js';
+import {
+  ASSISTANT_NAME,
+  DEFAULT_TRIGGER,
+  IS_OPERATOR_PROFILE,
+  RUNTIME_PROFILE,
+} from '../config.js';
 import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
 import {
@@ -67,7 +72,7 @@ export class WebChannel implements Channel {
       trigger: DEFAULT_TRIGGER,
       added_at: new Date().toISOString(),
       requiresTrigger: false,
-      isMain: true,
+      isMain: IS_OPERATOR_PROFILE,
     });
     this.server = new WebUIServer({
       port: this.port,
@@ -103,6 +108,14 @@ export class WebChannel implements Channel {
     });
 
     await this.server.start();
+    logger.info(
+      {
+        port: this.port,
+        profile: RUNTIME_PROFILE,
+        isMainGroup: IS_OPERATOR_PROFILE,
+      },
+      'Web UI channel started',
+    );
     this.unsubscribeRuntime = subscribeRuntimeEvents((event, run) => {
       this.server?.broadcast({
         type: 'run_event',

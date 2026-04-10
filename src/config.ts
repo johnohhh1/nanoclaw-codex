@@ -8,6 +8,7 @@ import { isValidTimezone } from './timezone.js';
 const envConfig = readEnvFile([
   'ASSISTANT_NAME',
   'ASSISTANT_HAS_OWN_NUMBER',
+  'NANOCLAW_PROFILE',
   'ONECLI_URL',
   'TZ',
 ]);
@@ -41,6 +42,17 @@ export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
 export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
 export const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
 export const SKILLS_DIR = path.resolve(PROJECT_ROOT, 'skills');
+
+export type RuntimeProfile = 'safe' | 'operator';
+
+function resolveRuntimeProfile(): RuntimeProfile {
+  const raw =
+    process.env.NANOCLAW_PROFILE || envConfig.NANOCLAW_PROFILE || 'safe';
+  return raw === 'operator' ? 'operator' : 'safe';
+}
+
+export const RUNTIME_PROFILE = resolveRuntimeProfile();
+export const IS_OPERATOR_PROFILE = RUNTIME_PROFILE === 'operator';
 
 export const CONTAINER_IMAGE =
   process.env.CONTAINER_IMAGE || 'nanoclaw-agent:latest';

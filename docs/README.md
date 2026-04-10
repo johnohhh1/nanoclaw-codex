@@ -2,7 +2,7 @@
 
 The official documentation is at **[docs.nanoclaw.dev](https://docs.nanoclaw.dev)**.
 
-The files in this directory are developer references. Some older design documents from the pre-port architecture have been condensed or removed in this branch.
+The files in this directory are developer references. Treat [RUNTIME_AUDIT.md](RUNTIME_AUDIT.md) and the current source as authoritative when older documents disagree.
 
 | This directory | Documentation site |
 |---|---|
@@ -15,5 +15,5 @@ The files in this directory are developer references. Some older design document
 | [SECURITY.md](SECURITY.md) | [Security model](https://docs.nanoclaw.dev/concepts/security) |
 | [REQUIREMENTS.md](REQUIREMENTS.md) | [Introduction](https://docs.nanoclaw.dev/introduction) |
 | [DEBUG_CHECKLIST.md](DEBUG_CHECKLIST.md) | [Troubleshooting](https://docs.nanoclaw.dev/advanced/troubleshooting) |
-| [docker-sandboxes.md](docker-sandboxes.md) | [Docker Sandboxes](https://docs.nanoclaw.dev/advanced/docker-sandboxes) |
+| [docker-sandboxes.md](docker-sandboxes.md) | Historical sandbox notes; not the primary supported setup path |
 | [APPLE-CONTAINER-NETWORKING.md](APPLE-CONTAINER-NETWORKING.md) | [Container runtime](https://docs.nanoclaw.dev/advanced/container-runtime) |

@@ -7,6 +7,8 @@ import {
   CONTAINER_DOCKER_SOCKET_PATH,
   CONTAINER_IMAGE,
   CONTAINER_MOUNT_DOCKER_SOCKET,
+  IS_OPERATOR_PROFILE,
+  RUNTIME_PROFILE,
 } from './config.js';
 import { getGroupSkills } from './db.js';
 import { readEnvFile } from './env.js';
@@ -94,6 +96,7 @@ export function formatCapabilitiesReport(group: RegisteredGroup): string {
   lines.push(`Assistant: ${ASSISTANT_NAME}`);
   lines.push(`Group: ${group.folder}`);
   lines.push(`Main channel: ${group.isMain ? 'yes' : 'no'}`);
+  lines.push(`Runtime profile: ${RUNTIME_PROFILE}`);
   lines.push('');
   lines.push('*Messaging*');
   lines.push('• Telegram channel');
@@ -106,7 +109,16 @@ export function formatCapabilitiesReport(group: RegisteredGroup): string {
   lines.push('*Operator Tools*');
   lines.push('• agent-browser for quick browser inspection');
   lines.push('• Playwright for deterministic browser automation');
-  lines.push('• Docker CLI in the main sandbox');
+  if (IS_OPERATOR_PROFILE) {
+    lines.push('• Real project access in the trusted main sandbox');
+    lines.push(
+      '• Docker CLI and optional Docker socket in the trusted main sandbox',
+    );
+  } else {
+    lines.push(
+      '• Safe profile: no real project-root bind and no Docker socket by default',
+    );
+  }
   lines.push('• Immediate progress replies via send_message');
   lines.push('• Subagents via team_create / team_send_message / task_output');
   lines.push('• Scheduled tasks via schedule_task / list_tasks / update_task');
@@ -150,6 +162,7 @@ export function formatStatusReport(
   lines.push(`Uptime: \`${formatProcessUptime()}\``);
   lines.push(`Group: \`${group.folder}\``);
   lines.push(`Main channel: ${group.isMain ? 'yes' : 'no'}`);
+  lines.push(`Runtime profile: ${RUNTIME_PROFILE}`);
   lines.push(`Installed skills: ${installedSkills.length}`);
   const webUiPort = process.env.WEB_UI_PORT || envVars.WEB_UI_PORT;
   lines.push(`Web UI: ${webUiPort ? `localhost:${webUiPort}` : 'disabled'}`);
@@ -193,6 +206,7 @@ export function formatRuntimeReport(
   lines.push(`Uptime: \`${formatProcessUptime()}\``);
   lines.push(`Group: \`${group.folder}\``);
   lines.push(`Main channel: ${group.isMain ? 'yes' : 'no'}`);
+  lines.push(`Runtime profile: \`${RUNTIME_PROFILE}\``);
   lines.push(`Connected channels: ${opts.connectedChannels.join(', ')}`);
   lines.push('');
   lines.push('*Web UI*');

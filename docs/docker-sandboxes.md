@@ -1,5 +1,7 @@
 # Running NanoClaw in Docker Sandboxes (Manual Setup)
 
+> Historical/experimental note: this document captures an older manual sandbox path and is not the primary supported setup flow for the current Codex-native repo. Prefer `./setup.sh`, [README.md](../README.md), and [RUNTIME_AUDIT.md](RUNTIME_AUDIT.md) when they disagree with this guide.
+
 This guide walks through setting up NanoClaw inside a [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) from scratch — no install script, no pre-built fork. You'll clone the upstream repo, apply the necessary patches, and have agents running in full hypervisor-level isolation.
 
 ## Architecture

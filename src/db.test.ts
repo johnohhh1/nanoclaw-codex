@@ -3,16 +3,19 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   _initTestDatabase,
   createTask,
+  deleteSession,
   deleteTask,
   getAllChats,
   getAllRegisteredGroups,
   getGroupSkills,
   getMessagesSince,
   getNewMessages,
+  getSession,
   getTaskById,
   installGroupSkill,
   removeGroupSkill,
   setRegisteredGroup,
+  setSession,
   storeChatMetadata,
   storeMessage,
   updateTask,
@@ -44,6 +47,16 @@ function store(overrides: {
 }
 
 // --- storeMessage (NewMessage format) ---
+
+describe('sessions', () => {
+  it('deletes a persisted session', () => {
+    setSession('telegram-pepper', 'stale-session');
+
+    deleteSession('telegram-pepper');
+
+    expect(getSession('telegram-pepper')).toBeUndefined();
+  });
+});
 
 describe('storeMessage', () => {
   it('stores a message and retrieves it', () => {

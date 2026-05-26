@@ -34,6 +34,7 @@ import {
   getAllRegisteredGroups,
   getAllSessions,
   getAllTasks,
+  deleteSession,
   deleteRegisteredGroupsByPrefix,
   getGroupSkills,
   getMessagesSince,
@@ -67,6 +68,7 @@ import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 import { createTraceRun, emitRuntimeEvent, finishTraceRun } from './traces.js';
+import { shouldResetRejectedModelSession } from './session-recovery.js';
 import {
   formatCapabilitiesReport,
   formatMainOnlyMessage,
@@ -614,6 +616,14 @@ async function runAgent(
     }
 
     if (output.status === 'error') {
+      if (shouldResetRejectedModelSession(sessionId, output.error)) {
+        delete sessions[group.folder];
+        deleteSession(group.folder);
+        logger.warn(
+          { group: group.name, sessionId },
+          'Discarded rejected Codex model session; retry will start a new session',
+        );
+      }
       logger.error(
         { group: group.name, error: output.error },
         'Container agent error',

@@ -61,6 +61,8 @@ const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
 const CODEX_HOME_ROOT = '/home/node';
 const CODEX_MCP_NAME = 'nanoclaw';
+const CODEX_MODEL = 'gpt-5.5';
+const CODEX_REASONING_EFFORT = 'medium';
 const RUN_ARTIFACTS_DIR = '/tmp/nanoclaw-codex';
 let supportsGlobalSearchFlag: boolean | null = null;
 
@@ -548,7 +550,12 @@ async function runCodexTurn(
     `last-message-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`,
   );
 
-  const args: string[] = [];
+  const args: string[] = [
+    '--model',
+    CODEX_MODEL,
+    '--config',
+    `model_reasoning_effort="${CODEX_REASONING_EFFORT}"`,
+  ];
 
   if (await codexSupportsGlobalSearch()) {
     args.push('--search');
@@ -588,6 +595,8 @@ async function runCodexTurn(
     emitTrace('codex_started', 'execution', 'Starting Codex turn', {
       sessionId: sessionId || null,
       cwd: '/workspace/group',
+      model: CODEX_MODEL,
+      reasoningEffort: CODEX_REASONING_EFFORT,
     });
 
     const child = spawn('codex', args, {
